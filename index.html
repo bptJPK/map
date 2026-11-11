@@ -138,79 +138,7 @@
       }
     };
 
-    const INITIAL_MODULES = [
-      {
-        id: "MOD-1",
-        code: "M1",
-        title: "Pengurusan Dokumentasi & Kualiti Kimpalan",
-        subModules: [
-          {
-            subId: "SM-1",
-            code: "SS01",
-            name: "Kajian Kod, Standard & Penyediaan WPS/PQR",
-            matchedWAs: ["CU1-WA1", "CU1-WA2"],
-            knowledge: "Standard ASME IX & AWS D1.1, Borang WPS, Parameter Arus.",
-            rkHours: 20,
-            skills: "Merangka draf WPS bagi kimpalan paip 6G, melaras mesin MIG.",
-            rsHours: 60
-          },
-          {
-            subId: "SM-2",
-            code: "SS02",
-            name: "Perancangan Pelan Pemeriksaan & Ujian (ITP)",
-            matchedWAs: ["CU1-WA3", "CU2-WA1"],
-            knowledge: "Format ITP, Penentuan Hold Point pihak ketiga.",
-            rkHours: 20,
-            skills: "Membangunkan jadual matriks ITP tangki tekanan tinggi.",
-            rsHours: 50
-          }
-        ]
-      },
-      {
-        id: "MOD-2",
-        code: "M2",
-        title: "Pengurusan Bahan, Bahan Luak & Pembakar",
-        subModules: [
-          {
-            subId: "SM-3",
-            code: "SS03",
-            name: "Pengiraan Keperluan Elektrod & Gas Pelindung",
-            matchedWAs: ["CU3-WA1"],
-            knowledge: "Formula volum deposit kimpalan sudut & alur, faktor kehilangan.",
-            rkHours: 25,
-            skills: "Mengira kuantiti elektrod E7018 dan gas Argon struktur 50 tan.",
-            rsHours: 45
-          },
-          {
-            subId: "SM-4",
-            code: "SS04",
-            name: "Penyimpanan & Pengendalian Ketuhar Elektrod (Baking Oven)",
-            matchedWAs: ["CU1-WA2", "CU3-WA1"],
-            knowledge: "Suhu baking (350°C) & holding oven (150°C), hidrogen resapan.",
-            rkHours: 15,
-            skills: "Mengisi rekod log suhu oven elektrod tapak bina.",
-            rsHours: 35
-          }
-        ]
-      },
-      {
-        id: "MOD-3",
-        code: "M3",
-        title: "Pemeriksaan Visual & Penilaian NDT",
-        subModules: [
-          {
-            subId: "SM-5",
-            code: "SS05",
-            name: "Pemeriksaan Visual Sambungan Kimpal & Cacat",
-            matchedWAs: ["CU2-WA2"],
-            knowledge: "Piawaian had terima kecacatan kimpalan AWS D1.1.",
-            rkHours: 25,
-            skills: "Mengukur ketinggian tetulang kimpalan dengan Bridge Cam Gauge.",
-            rsHours: 65
-          }
-        ]
-      }
-    ];
+    const INITIAL_MODULES = [];
 
     // Helper: Bersihkan nombor tahap (cth: "Bermula Tahap 5" -> "5", "Tahap 4" -> "4")
     function cleanTahapNumber(rawTahap) {
@@ -291,7 +219,7 @@
       
       // MULTI-PROGRAM SELECTION STATE
       // Menyokong gabungan berbilang NOSS: array kod program yang dipilih
-      const [selectedNossCodes, setSelectedNossCodes] = useState(["MC-024-4:2012"]);
+      const [selectedNossCodes, setSelectedNossCodes] = useState([]);
       const [showAddProgramDropdown, setShowAddProgramDropdown] = useState(false);
 
       // MAKLUMAT AGENSI & PROGRAM BOLEH DISUNTING (TAB 2)
@@ -299,6 +227,108 @@
       const [programName, setProgramName] = useState("DIPLOMA TEKNOLOGI KIMPALAN & FABRIKASI");
 
       const [modules, setModules] = useState(INITIAL_MODULES);
+      
+      // KAWALAN SEKURITI & KOLABORASI (SEMAKAN TAB 'DO' & PASSKEY DIJANA OTOMATIK OLEH SKRIP)
+      // 'DO' = Pegawai dalam Tab DO (Akses penuh termasuk tambah/buang program NOSS + lihat passkey harian)
+      // 'PEMBANTU' = Kolaborasi melalui passkey yang dijana skrip (Boleh buat semua hal KECUALI tambah program)
+      // 'GUEST' = Paparan sahaja (Terkunci sehingga disahkan melalui emel DO atau passkey kolaborasi)
+      const [userRole, setUserRole] = useState(() => localStorage.getItem("noss_user_role") || "GUEST");
+      const [doProfile, setDoProfile] = useState(() => {
+        try { return JSON.parse(localStorage.getItem("noss_do_profile") || "null"); } catch (e) { return null; }
+      });
+      const [dailyAutoPasskey, setDailyAutoPasskey] = useState(() => localStorage.getItem("noss_daily_passkey") || "");
+      const [showPasskeyModal, setShowPasskeyModal] = useState(false);
+      const [authTabMode, setAuthTabMode] = useState("DO"); // "DO" | "PEMBANTU"
+      const [inputDoEmail, setInputDoEmail] = useState("");
+      const [inputPasskey, setInputPasskey] = useState("");
+      const [authLoading, setAuthLoading] = useState(false);
+      const [passkeyError, setPasskeyError] = useState("");
+      const [copiedPasskey, setCopiedPasskey] = useState(false);
+
+      const handleVerifyDOEmail = async (e) => {
+        e.preventDefault();
+        setPasskeyError("");
+        const email = inputDoEmail.trim().toLowerCase();
+        if (!email) return;
+
+        setAuthLoading(true);
+        try {
+          const url = `${DEFAULT_GAS_URL}?action=verifyDO&email=${encodeURIComponent(email)}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data && data.valid) {
+            setUserRole("DO");
+            const profile = { name: data.name, unit: data.unit, email: data.email };
+            setDoProfile(profile);
+            setDailyAutoPasskey(data.autoPasskey || "");
+            localStorage.setItem("noss_user_role", "DO");
+            localStorage.setItem("noss_do_profile", JSON.stringify(profile));
+            if (data.autoPasskey) localStorage.setItem("noss_daily_passkey", data.autoPasskey);
+            setInputDoEmail("");
+          } else {
+            setPasskeyError((data && data.message) || "Emel tidak dijumpai dalam Tab DO.");
+          }
+        } catch (err) {
+          setPasskeyError("Gagal menghubungi pelayan pengesahan DO. Sila semak sambungan internet.");
+        } finally {
+          setAuthLoading(false);
+        }
+      };
+
+      const handleVerifyCollaboratorPasskey = async (e) => {
+        e.preventDefault();
+        setPasskeyError("");
+        const key = inputPasskey.trim().toUpperCase();
+        if (!key) return;
+
+        setAuthLoading(true);
+        try {
+          const url = `${DEFAULT_GAS_URL}?action=verifyPasskey&key=${encodeURIComponent(key)}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data && data.valid) {
+            setUserRole("PEMBANTU");
+            setDoProfile(null);
+            localStorage.setItem("noss_user_role", "PEMBANTU");
+            localStorage.removeItem("noss_do_profile");
+            setShowPasskeyModal(false);
+            setInputPasskey("");
+          } else {
+            setPasskeyError((data && data.message) || "Passkey kolaborasi tidak sah.");
+          }
+        } catch (err) {
+          setPasskeyError("Gagal menyemak passkey kolaborasi. Sila semak sambungan internet.");
+        } finally {
+          setAuthLoading(false);
+        }
+      };
+
+      const handleCopyPasskey = () => {
+        if (!dailyAutoPasskey) return;
+        navigator.clipboard.writeText(dailyAutoPasskey);
+        setCopiedPasskey(true);
+        setTimeout(() => setCopiedPasskey(false), 2000);
+      };
+
+      const handleLogoutAccess = () => {
+        setUserRole("GUEST");
+        setDoProfile(null);
+        setDailyAutoPasskey("");
+        localStorage.removeItem("noss_user_role");
+        localStorage.removeItem("noss_do_profile");
+        localStorage.removeItem("noss_daily_passkey");
+        setShowPasskeyModal(false);
+      };
+      const [showAddModuleModal, setShowAddModuleModal] = useState(false);
+      const [newModCode, setNewModCode] = useState("");
+      const [newModTitle, setNewModTitle] = useState("");
+      const [showAddSubModal, setShowAddSubModal] = useState(null); // holds modId when open
+      const [newSubCode, setNewSubCode] = useState("");
+      const [newSubName, setNewSubName] = useState("");
+      const [newSubKnowledge, setNewSubKnowledge] = useState("");
+      const [newSubRkHours, setNewSubRkHours] = useState(20);
+      const [newSubSkills, setNewSubSkills] = useState("");
+      const [newSubRsHours, setNewSubRsHours] = useState(40);
       const [collapsedCUs, setCollapsedCUs] = useState({});
       const [collapsedModules, setCollapsedModules] = useState({});
       
@@ -318,15 +348,14 @@
           try {
             let finalUrl = DEFAULT_GAS_URL;
             if (!finalUrl.includes("action=")) {
-              finalUrl += (finalUrl.includes("?") ? "&" : "?") + "action=getData";
+              finalUrl += (finalUrl.includes("?") ? "&" : "?") + "action=getMappingData";
             }
             const res = await fetch(finalUrl);
             const data = await res.json();
             if (data && typeof data === 'object' && Object.keys(data).length > 0) {
               const cleanDB = normalizeNossData(data);
               setNossDatabase(cleanDB);
-              const firstKey = Object.keys(cleanDB)[0];
-              if (firstKey) setSelectedNossCodes([firstKey]);
+              // Biarkan kosong supaya pengguna pilih sendiri dari dropdown
               setApiSuccessBadge(true);
             }
           } catch (e) {
@@ -351,16 +380,12 @@
       };
 
       const handleRemoveProgram = (code) => {
-        if (selectedNossCodes.length <= 1) {
-          alert("Sekurang-kurangnya satu program NOSS mesti dipilih.");
-          return;
-        }
         setSelectedNossCodes(prev => prev.filter(c => c !== code));
       };
 
       // TUKAR PROGRAM UTAMA TUNGGAL (Jika guna dropdown mod biasa)
       const handlePrimaryProgramChange = (code) => {
-        setSelectedNossCodes([code]);
+        setSelectedNossCodes(code ? [code] : []);
       };
 
       // Covered WAs set
@@ -407,6 +432,7 @@
       }, [modules]);
 
       const toggleMatch = (subId, globalWaId) => {
+        if (userRole === "GUEST") { setShowPasskeyModal(true); return; }
         setModules(prev => prev.map(m => ({
           ...m,
           subModules: m.subModules.map(sm => {
@@ -432,11 +458,77 @@
       };
 
       const deleteSubModule = (modId, subId) => {
+        if (userRole === "GUEST") { setShowPasskeyModal(true); return; }
         if (!confirm("Adakah anda pasti untuk memadam Sub Modul ini?")) return;
         setModules(prev => prev.map(m => {
           if (m.id !== modId) return m;
           return { ...m, subModules: m.subModules.filter(sm => sm.subId !== subId) };
         }));
+      };
+
+      const deleteModule = (modId) => {
+        if (userRole === "GUEST") { setShowPasskeyModal(true); return; }
+        if (!confirm("Adakah anda pasti untuk memadam keseluruhan Modul ini beserta semua sub-modulnya?")) return;
+        setModules(prev => prev.filter(m => m.id !== modId));
+      };
+
+      const handleOpenAddModule = () => {
+        if (userRole === "GUEST") { setShowPasskeyModal(true); return; }
+        const nextNum = modules.length + 1;
+        setNewModCode(`M${nextNum}`);
+        setNewModTitle("");
+        setShowAddModuleModal(true);
+      };
+
+      const handleSaveNewModule = (e) => {
+        e.preventDefault();
+        if (!newModTitle.trim()) return;
+        const modId = `MOD-${Date.now()}`;
+        const codeStr = newModCode.trim() || `M${modules.length + 1}`;
+        setModules(prev => [
+          ...prev,
+          {
+            id: modId,
+            code: codeStr,
+            title: newModTitle.trim(),
+            subModules: []
+          }
+        ]);
+        setShowAddModuleModal(false);
+      };
+
+      const handleOpenAddSubModule = (modId) => {
+        if (userRole === "GUEST") { setShowPasskeyModal(true); return; }
+        const targetMod = modules.find(m => m.id === modId);
+        const totalSubs = modules.reduce((acc, m) => acc + m.subModules.length, 0) + 1;
+        setNewSubCode(`SS${String(totalSubs).padStart(2, '0')}`);
+        setNewSubName("");
+        setNewSubKnowledge("");
+        setNewSubRkHours(20);
+        setNewSubSkills("");
+        setNewSubRsHours(40);
+        setShowAddSubModal(modId);
+      };
+
+      const handleSaveNewSubModule = (e) => {
+        e.preventDefault();
+        if (!showAddSubModal || !newSubName.trim()) return;
+        const newSub = {
+          subId: `SM-${Date.now()}`,
+          code: newSubCode.trim() || `SS${Date.now().toString().slice(-3)}`,
+          name: newSubName.trim(),
+          matchedWAs: [],
+          knowledge: newSubKnowledge.trim() || `Perincian teori ${newSubName.trim()}`,
+          rkHours: Number(newSubRkHours) || 0,
+          skills: newSubSkills.trim() || `Perincian amali ${newSubName.trim()}`,
+          rsHours: Number(newSubRsHours) || 0
+        };
+        setModules(prev => prev.map(m => {
+          if (m.id !== showAddSubModal) return m;
+          return { ...m, subModules: [...m.subModules, newSub] };
+        }));
+        setCollapsedModules(prev => ({ ...prev, [showAddSubModal]: false }));
+        setShowAddSubModal(null);
       };
 
       const handleUpdateSubModuleField = (modId, subId, field, value) => {
@@ -453,6 +545,7 @@
       };
 
       const toggleComplianceStatus = (gId, defaultStatus) => {
+        if (userRole === "GUEST") { setShowPasskeyModal(true); return; }
         const current = manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultStatus;
         setManualCompliance({
           ...manualCompliance,
@@ -460,8 +553,9 @@
         });
       };
 
-      const r2Top = showFullWA ? "top-[128px]" : "top-[38px]";
-      const r3Top = showFullWA ? "top-[168px]" : "top-[78px]";
+      // Pelarasan tepat ketinggian header untuk mematri celah (tiada bayang tembus semasa skrol)
+      const r2Top = showFullWA ? "top-[112px]" : "top-[36px]";
+      const r3Top = showFullWA ? "top-[152px]" : "top-[76px]";
 
       const handleFileUpload = (e) => {
         const file = e.target.files[0];
@@ -563,8 +657,9 @@
                     <select
                       value={selectedNossCodes[0] || ""}
                       onChange={(e) => handlePrimaryProgramChange(e.target.value)}
-                      className="bg-slate-900 text-slate-100 font-mono text-xs rounded border-none focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer max-w-[200px] truncate"
+                      className="bg-slate-900 text-slate-100 font-mono text-xs rounded border-none focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer max-w-[230px] truncate"
                     >
+                      <option value="">-- Pilih Program NOSS --</option>
                       {Object.keys(nossDatabase).map(k => (
                         <option key={k} value={k}>
                           {k} ({nossDatabase[k].title ? nossDatabase[k].title.substring(0, 16) + '...' : ''} T{cleanTahapNumber(nossDatabase[k].tahap)})
@@ -572,16 +667,22 @@
                       ))}
                     </select>
 
-                    {/* BUTANG TAMBAH PROGRAM NOSS (+ GABUNG NOSS) */}
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowAddProgramDropdown(!showAddProgramDropdown)}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-2 py-0.5 rounded flex items-center gap-1 shadow-xs transition"
-                        title="Gabungkan program NOSS tambahan untuk pemetaan serentak"
-                      >
-                        <span>+ Tambah NOSS</span>
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/></svg>
-                      </button>
+                    {/* BUTANG TAMBAH PROGRAM NOSS: HANYA BOLEH DIAKSES OLEH DO (PEMBANTU TIDAK DIBENARKAN) */}
+                    {userRole === "DO" ? (
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowAddProgramDropdown(!showAddProgramDropdown)}
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-2 py-0.5 rounded flex items-center gap-1 shadow-xs transition"
+                          title="Akses DO: Gabungkan program NOSS tambahan"
+                        >
+                          <span>+ Tambah NOSS</span>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic px-1.5 py-0.5 bg-slate-900 rounded border border-slate-700/60" title="Akses Pembantu: Mod Kolaborasi Terhad (Hanya DO dibenarkan menambah program NOSS)">
+                        🔒 Program Dikunci
+                      </span>
+                    )}
 
                       {/* Dropdown Senarai Program untuk Ditambah */}
                       {showAddProgramDropdown && (
@@ -628,6 +729,31 @@
                     Templat Excel
                   </a>
 
+                  {/* BUTANG STATUS SEKURITI & KOLABORASI */}
+                  <button
+                    onClick={() => {
+                      setPasskeyError("");
+                      setAuthTabMode(userRole === "DO" ? "DO" : "PEMBANTU");
+                      setShowPasskeyModal(true);
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow transition border ${
+                      userRole === "DO"
+                        ? "bg-amber-500/20 text-amber-300 border-amber-400 hover:bg-amber-500/30"
+                        : userRole === "PEMBANTU"
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-400 hover:bg-emerald-500/30"
+                        : "bg-rose-500/20 text-rose-300 border-rose-400 hover:bg-rose-500/30"
+                    }`}
+                    title="Klik untuk pengesahan DO atau masukkan Passkey Kolaborasi"
+                  >
+                    <span>
+                      {userRole === "DO"
+                        ? `👑 DO: ${doProfile?.name ? doProfile.name.split(" ").slice(0, 2).join(" ") : "Aktif"}`
+                        : userRole === "PEMBANTU"
+                        ? "👥 Pembantu (Kolaborasi)"
+                        : "🔒 Mod Paparan (Klik Akses)"}
+                    </span>
+                  </button>
+
                   {/* Cetak Rasmi */}
                   <button 
                     onClick={() => window.print()}
@@ -647,13 +773,15 @@
                     <div key={prog.code} className="inline-flex items-center gap-1.5 bg-slate-800 border border-slate-700 text-slate-200 px-2 py-0.5 rounded-md text-[11px]">
                       <span className="font-mono font-bold text-amber-300">{prog.code}</span>
                       <span className="text-slate-400 text-[10px] truncate max-w-[120px]">T{cleanTahapNumber(prog.tahap)}</span>
-                      <button 
-                        onClick={() => handleRemoveProgram(prog.code)}
-                        className="text-slate-500 hover:text-rose-400 font-bold ml-1"
-                        title="Buang program ini dari gabungan"
-                      >
-                        ✕
-                      </button>
+                      {userRole === "DO" && (
+                        <button 
+                          onClick={() => handleRemoveProgram(prog.code)}
+                          className="text-slate-500 hover:text-rose-400 font-bold ml-1"
+                          title="Akses DO: Buang program ini dari gabungan"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -736,6 +864,14 @@
                       <span>Muat Naik Templat Excel</span>
                       <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="hidden" />
                     </label>
+                    <button
+                      onClick={handleOpenAddModule}
+                      className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold px-2.5 py-1.5 rounded shadow transition"
+                      title="Tambah modul kurikulum agensi secara manual"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+                      <span>Tambah Modul</span>
+                    </button>
                     <span className="text-[11px] text-slate-500">Klik petak matriks untuk tanda/buang <strong>'X'</strong>.</span>
                   </div>
 
@@ -771,14 +907,14 @@
                       
                       <thead>
                         {/* Baris 1: Header NO, MODUL & Header WA */}
-                        <tr className="bg-solid-header-dark text-slate-200 text-xs">
-                          <th className="sticky-c1 top-0 z-40 bg-solid-header-dark p-2 text-center border-b border-r border-slate-700 font-bold text-slate-300 w-[44px] min-w-[44px]">
+                        <tr style={{ height: showFullWA ? "112px" : "36px" }} className="bg-solid-header-dark text-slate-200 text-xs">
+                          <th style={{zIndex: 50, backgroundColor: "#0f172a"}} className="sticky-c1 top-0 p-2 text-center border-b border-r border-slate-700 font-bold text-slate-300 w-[44px] min-w-[44px]">
                             NO
                           </th>
-                          <th className="sticky-c2 top-0 z-40 bg-solid-header-dark px-3 py-2 border-b border-r border-slate-700 font-bold text-slate-200 text-xs w-[280px] min-w-[280px]">
+                          <th style={{zIndex: 50, backgroundColor: "#0f172a"}} className="sticky-c2 top-0 px-3 py-2 border-b border-r border-slate-700 font-bold text-slate-200 text-xs w-[280px] min-w-[280px]">
                             MODUL & KURIKULUM AGENSI
                           </th>
-                          <th className="sticky-c3 top-0 z-40 bg-solid-header-dark p-1 border-b border-r border-slate-700 text-center w-[44px] min-w-[44px]">
+                          <th style={{zIndex: 50, backgroundColor: "#0f172a"}} className="sticky-c3 top-0 p-1 border-b border-r border-slate-700 text-center w-[56px] min-w-[56px]">
                             {/* Tindakan */}
                           </th>
 
@@ -822,8 +958,8 @@
                         </tr>
 
                         {/* Baris 2: CU / DUTY (DYNAMIC TOP OFFSET KEMAS) */}
-                        <tr className="bg-solid-cu-dark text-slate-100 text-xs border-b border-slate-700">
-                          <th colSpan="3" className={`sticky-c1 ${r2Top} z-40 bg-solid-cu-dark px-3 py-1.5 border-r border-slate-700 font-bold text-slate-300 text-right uppercase text-[11px]`}>
+                        <tr style={{ height: "40px" }} className="bg-solid-cu-dark text-slate-100 text-xs border-b border-slate-700">
+                          <th colSpan="3" style={{zIndex: 50, backgroundColor: "#1e293b"}} className={`sticky-c1 ${r2Top} px-3 py-1.5 border-r border-slate-700 font-bold text-slate-300 text-right uppercase text-[11px]`}>
                             CU / DUTY (UNIT KOMPETENSI SKPK)
                           </th>
 
@@ -881,8 +1017,8 @@
                         </tr>
 
                         {/* Baris 3: TAHAP (ANGKA SAHAJA - RINGKAS & JIMAT RUANG) */}
-                        <tr className="bg-solid-cu-dark text-slate-400 text-[10px] border-b border-slate-600">
-                          <th colSpan="3" className={`sticky-c1 ${r3Top} z-40 bg-solid-cu-dark px-3 py-1 border-r border-slate-700 text-right font-medium`}>
+                        <tr style={{ height: "26px" }} className="bg-solid-cu-dark text-slate-400 text-[10px] border-b border-slate-600">
+                          <th colSpan="3" style={{zIndex: 50, backgroundColor: "#1e293b"}} className={`sticky-c1 ${r3Top} px-3 py-1 border-r border-slate-700 text-right font-medium`}>
                             TAHAP
                           </th>
                           {selectedPrograms.map(prog => {
@@ -938,8 +1074,23 @@
                                   </div>
                                 </td>
 
-                                <td className={`sticky-c3 p-1 text-center border-r border-slate-200 text-[10px] font-mono w-[44px] ${rowBgSolid} ${mStat.hasAny ? 'text-teal-800 font-bold' : 'text-slate-500'}`}>
-                                  {mod.subModules.length}
+                                <td className={`sticky-c3 p-1 text-center border-r border-slate-200 w-[56px] min-w-[56px] ${rowBgSolid}`}>
+                                  <div className="flex items-center justify-center gap-0.5">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleOpenAddSubModule(mod.id); }}
+                                      className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 p-1 rounded transition"
+                                      title="Tambah SubModul di bawah modul ini"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"/></svg>
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); deleteModule(mod.id); }}
+                                      className="text-slate-400 hover:text-rose-600 hover:bg-rose-100 p-1 rounded transition"
+                                      title="Padam keseluruhan modul ini"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                    </button>
+                                  </div>
                                 </td>
 
                                 {/* Baris Sel Matriks Kosong Bagi Induk Modul */}
@@ -982,7 +1133,7 @@
                                       <div className="text-[9px] text-slate-400 font-mono">{sm.code}</div>
                                     </td>
 
-                                    <td className={`sticky-c3 p-1 text-center border-r border-slate-200 w-[44px] ${subSolidBg}`}>
+                                    <td className={`sticky-c3 p-1 text-center border-r border-slate-200 w-[56px] min-w-[56px] ${subSolidBg}`}>
                                       <button 
                                         onClick={() => deleteSubModule(mod.id, sm.subId)}
                                         className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition mx-auto flex items-center justify-center"
@@ -1029,6 +1180,25 @@
                             </React.Fragment>
                           );
                         })}
+                        {modules.length === 0 && (
+                          <tr>
+                            <td colSpan={3 + selectedPrograms.reduce((acc, p) => acc + (p.cus || []).reduce((a, c) => a + c.was.length, 0), 0)} className="p-8 text-center bg-white">
+                              <div className="max-w-md mx-auto space-y-3">
+                                <p className="text-sm font-bold text-slate-700">Tiada Modul Kurikulum Agensi Dimuatkan</p>
+                                <p className="text-xs text-slate-500">Anda boleh memuat naik fail Excel atau memasukkan modul dan sub-modul secara manual:</p>
+                                <div className="flex items-center justify-center gap-2 pt-1">
+                                  <button
+                                    onClick={handleOpenAddModule}
+                                    className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow transition"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+                                    <span>Tambah Modul Manual</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
 
                       {/* STATISTIK BAWAH CETAKAN */}
@@ -1372,12 +1542,12 @@
 
                                           <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-slate-700 align-top bg-slate-50/50">
                                             <div className="font-medium text-slate-800 text-[11px]">{wa.rk}</div>
-                                            <div className="text-[10px] text-slate-500 font-mono mt-0.5">{wa.rkHours} Jam</div>
+                                            <div className="mt-1.5"><span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">⏱ {wa.rkHours} Jam</span></div>
                                           </td>
 
                                           <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-slate-700 align-top bg-slate-50/50">
                                             <div className="font-medium text-slate-800 text-[11px]">{wa.rs}</div>
-                                            <div className="text-[10px] text-slate-500 font-mono mt-0.5">{wa.rsHours} Jam</div>
+                                            <div className="mt-1.5"><span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-indigo-100 text-indigo-900 border border-indigo-300 shadow-2xs">⏱ {wa.rsHours} Jam</span></div>
                                           </td>
 
                                           {/* Sub-baris Agensi 1 */}
@@ -1525,6 +1695,301 @@
             )}
 
           </main>
+
+          {/* MODAL KAWALAN SEKURITI & PASSKEY KOLABORASI AUTOMATIK */}
+          {showPasskeyModal && (
+            <div className="fixed inset-0 bg-slate-900/75 z-50 flex items-center justify-center p-4 no-print">
+              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 space-y-4 border border-slate-200">
+                <div className="flex items-center justify-between border-b pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-sm">Kawalan Akses DO & Kolaborasi</h3>
+                  </div>
+                  <button type="button" onClick={() => setShowPasskeyModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                </div>
+
+                {/* JIKA SUDAH LOG MASUK SEBAGAI DO: PAPARKAN PROFIL & PASSKEY HARIAN YANG DIJANA SKRIP */}
+                {userRole === "DO" ? (
+                  <div className="space-y-3 text-xs">
+                    <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-amber-900">👑 Pegawai DO Disahkan</span>
+                        <span className="text-[10px] bg-amber-200 text-amber-950 px-2 py-0.5 rounded font-bold">Akses Penuh</span>
+                      </div>
+                      <p className="font-semibold text-slate-800">{doProfile?.name}</p>
+                      <p className="text-[11px] text-slate-600">{doProfile?.unit} ({doProfile?.email})</p>
+                    </div>
+
+                    <div className="p-3 bg-slate-900 text-white rounded-lg space-y-2 border border-slate-700">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-slate-300 font-semibold">Passkey Kolaborasi Hari Ini (Dijana Skrip):</span>
+                        <span className="text-[10px] text-emerald-400 font-mono">Auto-Reset 24j</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-slate-800 px-3 py-2 rounded border border-slate-700">
+                        <span className="font-mono text-base font-bold tracking-widest text-amber-300 select-all">
+                          {dailyAutoPasskey || "JPK-AUTO"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyPasskey}
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded transition"
+                        >
+                          {copiedPasskey ? "✓ Disalin" : "Salin Passkey"}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        Kongsikan passkey ini kepada pembantu di talian Wi-Fi sepunya. Pembantu boleh mengisi matriks, modul & ulasan <strong>kecuali</strong> menambah/menukar program NOSS.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <button
+                        type="button"
+                        onClick={handleLogoutAccess}
+                        className="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                      >
+                        Kunci Semula (Log Keluar)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowPasskeyModal(false)}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded"
+                      >
+                        Selesai
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* BORANG PENGESAHAN UNTUK DO ATAU PEMBANTU */
+                  <div className="space-y-3 text-xs">
+                    {userRole === "PEMBANTU" && (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-emerald-900 block">👥 Mod Pembantu (Kolaborasi Aktif)</span>
+                          <span className="text-[10px] text-emerald-700">Boleh sunting pemetaan, modul & ulasan (Program NOSS dikunci).</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleLogoutAccess}
+                          className="text-[11px] text-rose-600 hover:underline font-semibold shrink-0 ml-2"
+                        >
+                          Kunci
+                        </button>
+                      </div>
+                    )}
+
+                    {/* TABS PILIHAN PENGESAHAN */}
+                    <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => { setAuthTabMode("PEMBANTU"); setPasskeyError(""); }}
+                        className={`py-1.5 rounded-md font-bold text-[11px] transition ${authTabMode === "PEMBANTU" ? "bg-white text-indigo-700 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                      >
+                        👥 Passkey Pembantu
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAuthTabMode("DO"); setPasskeyError(""); }}
+                        className={`py-1.5 rounded-md font-bold text-[11px] transition ${authTabMode === "DO" ? "bg-white text-amber-800 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                      >
+                        👑 Log Masuk Pegawai DO
+                      </button>
+                    </div>
+
+                    {authTabMode === "PEMBANTU" ? (
+                      <form onSubmit={handleVerifyCollaboratorPasskey} className="space-y-3 pt-1">
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">Masukkan Passkey Kolaborasi (Daripada DO):</label>
+                          <input
+                            type="text"
+                            value={inputPasskey}
+                            onChange={(e) => setInputPasskey(e.target.value)}
+                            placeholder="Contoh: JPK-4821"
+                            className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono text-center uppercase tracking-widest text-sm"
+                            autoFocus
+                            required
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Dapatkan kod passkey harian yang dijana oleh pegawai DO untuk menyunting matriks secara kolaboratif.
+                          </p>
+                        </div>
+
+                        {passkeyError && (
+                          <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 p-2 rounded border border-rose-200">{passkeyError}</p>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-2 border-t">
+                          <button type="button" onClick={() => setShowPasskeyModal(false)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded">Tutup</button>
+                          <button type="submit" disabled={authLoading} className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded shadow">
+                            {authLoading ? "Menyemak..." : "Aktifkan Kolaborasi"}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleVerifyDOEmail} className="space-y-3 pt-1">
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">Emel Rasmi Pegawai (Tab DO):</label>
+                          <input
+                            type="email"
+                            value={inputDoEmail}
+                            onChange={(e) => setInputDoEmail(e.target.value)}
+                            placeholder="nama@mohr.gov.my"
+                            className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-amber-500 text-xs"
+                            autoFocus
+                            required
+                          />
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Sistem akan mengesahkan emel anda daripada helaian <strong>DO</strong> dan menjana passkey kolaborasi secara automatik.
+                          </p>
+                        </div>
+
+                        {passkeyError && (
+                          <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 p-2 rounded border border-rose-200">{passkeyError}</p>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-2 border-t">
+                          <button type="button" onClick={() => setShowPasskeyModal(false)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded">Tutup</button>
+                          <button type="submit" disabled={authLoading} className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded shadow">
+                            {authLoading ? "Mengesahkan..." : "Sahkan Emel DO"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* MODAL TAMBAH MODUL MANUAL */}
+          {showAddModuleModal && (
+            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 no-print">
+              <form onSubmit={handleSaveNewModule} className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="font-bold text-slate-800 text-sm">Tambah Modul Kurikulum Agensi</h3>
+                  <button type="button" onClick={() => setShowAddModuleModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                </div>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Kod Modul</label>
+                    <input
+                      type="text"
+                      value={newModCode}
+                      onChange={(e) => setNewModCode(e.target.value)}
+                      placeholder="Contoh: M1"
+                      className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Nama / Tajuk Modul</label>
+                    <input
+                      type="text"
+                      value={newModTitle}
+                      onChange={(e) => setNewModTitle(e.target.value)}
+                      placeholder="Masukkan tajuk modul agensi..."
+                      className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500"
+                      autoFocus
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <button type="button" onClick={() => setShowAddModuleModal(false)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded">Batal</button>
+                  <button type="submit" className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded shadow">Simpan Modul</button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* MODAL TAMBAH SUBMODUL MANUAL */}
+          {showAddSubModal && (
+            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 no-print">
+              <form onSubmit={handleSaveNewSubModule} className="bg-white rounded-xl shadow-xl max-w-lg w-full p-5 space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="font-bold text-slate-800 text-sm">Tambah Sub-Modul / Topik Agensi</h3>
+                  <button type="button" onClick={() => setShowAddSubModal(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+                </div>
+                <div className="space-y-3 text-xs">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Kod SubModul</label>
+                      <input
+                        type="text"
+                        value={newSubCode}
+                        onChange={(e) => setNewSubCode(e.target.value)}
+                        placeholder="SS01"
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                        required
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block font-semibold text-slate-700 mb-1">Nama Topik / Sub-Modul</label>
+                      <input
+                        type="text"
+                        value={newSubName}
+                        onChange={(e) => setNewSubName(e.target.value)}
+                        placeholder="Masukkan nama topik atau sub-modul..."
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500"
+                        autoFocus
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-3">
+                      <label className="block font-semibold text-slate-700 mb-1">Knowledge / Kandungan Teori (Pilihan)</label>
+                      <input
+                        type="text"
+                        value={newSubKnowledge}
+                        onChange={(e) => setNewSubKnowledge(e.target.value)}
+                        placeholder="Ringkasan teori yang diajar..."
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Jam Teori</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newSubRkHours}
+                        onChange={(e) => setNewSubRkHours(e.target.value)}
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-3">
+                      <label className="block font-semibold text-slate-700 mb-1">Applied Skills / Amali (Pilihan)</label>
+                      <input
+                        type="text"
+                        value={newSubSkills}
+                        onChange={(e) => setNewSubSkills(e.target.value)}
+                        placeholder="Ringkasan kemahiran praktikal..."
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Jam Amali</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newSubRsHours}
+                        onChange={(e) => setNewSubRsHours(e.target.value)}
+                        className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <button type="button" onClick={() => setShowAddSubModal(null)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded">Batal</button>
+                  <button type="submit" className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded shadow">Simpan Sub-Modul</button>
+                </div>
+              </form>
+            </div>
+          )}
 
           <footer className="bg-white border-t border-slate-200 py-2 text-center text-[11px] text-slate-400 no-print">
             Sistem Pemetaan Kurikulum & NOSS Bersepadu © 2026

@@ -351,38 +351,7 @@
         return false;
       };
 
-      // Pengesahan automatik Google Credential Response
-      const handleGoogleCredentialResponse = async (response) => {
-        setAuthLoading(true);
-        setPasskeyError("");
-        try {
-          const payload = parseJwt(response.credential);
-          if (payload && payload.email) {
-            const email = payload.email.toLowerCase();
-            const url = `${DEFAULT_GAS_URL}?action=verifyDO&email=${encodeURIComponent(email)}`;
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data && data.valid) {
-              setUserRole("DO");
-              const profile = { name: data.name || payload.name, unit: data.unit, email: email, picture: payload.picture };
-              setDoProfile(profile);
-              setDailyAutoPasskey(data.autoPasskey || "");
-              localStorage.setItem("noss_user_role", "DO");
-              localStorage.setItem("noss_do_profile", JSON.stringify(profile));
-              if (data.autoPasskey) localStorage.setItem("noss_daily_passkey", data.autoPasskey);
-              setShowPasskeyModal(false);
-            } else {
-              setPasskeyError(data.message || `Akaun Google anda (${email}) tidak tersenarai sebagai pegawai DO yang dibenarkan.`);
-            }
-          } else {
-            setPasskeyError("Gagal membaca maklumat pengesahan akaun Google.");
-          }
-        } catch (err) {
-          setPasskeyError("Ralat semasa pengesahan akaun Google: " + err.message);
-        } finally {
-          setAuthLoading(false);
-        }
-      };
+
 
       // FUNGSI LOG MASUK RASMI GOOGLE (PENGESAHAN IDENTITI TULEN - TIADA TAIP MANUAL)
       const handleGoogleSignInClick = () => {

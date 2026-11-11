@@ -219,7 +219,10 @@
       
       // MULTI-PROGRAM SELECTION STATE
       // Menyokong gabungan berbilang NOSS: array kod program yang dipilih
-      const [selectedNossCodes, setSelectedNossCodes] = useState([]);
+      const [selectedNossCodes, setSelectedNossCodes] = useState(() => {
+        const saved = localStorage.getItem("noss_active_program");
+        return saved ? [saved] : [];
+      });
       const [showAddProgramDropdown, setShowAddProgramDropdown] = useState(false);
 
       // MAKLUMAT AGENSI & PROGRAM BOLEH DISUNTING (TAB 2)
@@ -385,7 +388,16 @@
 
       // TUKAR PROGRAM UTAMA TUNGGAL (Jika guna dropdown mod biasa)
       const handlePrimaryProgramChange = (code) => {
+        if (userRole !== "DO") {
+          alert("Akses Terhad: Hanya Pegawai DO dibenarkan memilih atau menukar program NOSS.");
+          return;
+        }
         setSelectedNossCodes(code ? [code] : []);
+        if (code) {
+          localStorage.setItem("noss_active_program", code);
+        } else {
+          localStorage.removeItem("noss_active_program");
+        }
       };
 
       // Covered WAs set
@@ -653,19 +665,37 @@
                   <div className="bg-slate-800 border border-slate-700 px-2 py-1 rounded-lg flex items-center gap-1.5 relative">
                     <span className="text-amber-400 font-bold text-[11px]">NOSS:</span>
                     
-                    {/* Program Utama / Pertama */}
-                    <select
-                      value={selectedNossCodes[0] || ""}
-                      onChange={(e) => handlePrimaryProgramChange(e.target.value)}
-                      className="bg-slate-900 text-slate-100 font-mono text-xs rounded border-none focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer max-w-[230px] truncate"
-                    >
-                      <option value="">-- Pilih Program NOSS --</option>
-                      {Object.keys(nossDatabase).map(k => (
-                        <option key={k} value={k}>
-                          {k} ({nossDatabase[k].title ? nossDatabase[k].title.substring(0, 16) + '...' : ''} T{cleanTahapNumber(nossDatabase[k].tahap)})
-                        </option>
-                      ))}
-                    </select>
+                    {/* Program Utama / Pertama: Dikunci untuk Kolaborator / Pembantu, Hanya DO Boleh Tukar */}
+                    {userRole === "DO" ? (
+                      <select
+                        value={selectedNossCodes[0] || ""}
+                        onChange={(e) => handlePrimaryProgramChange(e.target.value)}
+                        className="bg-slate-900 text-slate-100 font-mono text-xs rounded border border-indigo-500/50 focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer max-w-[230px] truncate"
+                        title="Akses DO: Pilih atau tukar program NOSS utama"
+                      >
+                        <option value="">-- Pilih Program NOSS --</option>
+                        {Object.keys(nossDatabase).map(k => (
+                          <option key={k} value={k}>
+                            {k} ({nossDatabase[k].title ? nossDatabase[k].title.substring(0, 16) + '...' : ''} T{cleanTahapNumber(nossDatabase[k].tahap)})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div 
+                        className="bg-slate-950 text-slate-200 font-mono text-xs px-2 py-0.5 rounded border border-slate-700/80 max-w-[230px] truncate cursor-not-allowed select-none flex items-center gap-1.5"
+                        title="Program ditetapkan oleh Pegawai DO (Mod Kolaborasi dikunci)"
+                      >
+                        <span className="text-[10px]">🔒</span>
+                        <span className="font-bold text-amber-300 truncate">
+                          {selectedNossCodes[0] ? `${selectedNossCodes[0]}` : "Belum Ditetapkan DO"}
+                        </span>
+                        {selectedNossCodes[0] && nossDatabase[selectedNossCodes[0]] && (
+                          <span className="text-[10px] text-slate-400">
+                            (T{cleanTahapNumber(nossDatabase[selectedNossCodes[0]].tahap)})
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* BUTANG TAMBAH PROGRAM NOSS: HANYA BOLEH DIAKSES OLEH DO (PEMBANTU TIDAK DIBENARKAN) */}
                     {userRole === "DO" ? (

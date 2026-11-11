@@ -241,6 +241,10 @@
       const [lastSyncUser, setLastSyncUser] = useState("");
       const [cloudStatusMsg, setCloudStatusMsg] = useState("");
       
+      // REFS UNTUK AUTO-SAVE & AUTO-SYNC TANPA GANGGUAN
+      const isDataLoadedRef = useRef(false);
+      const saveTimeoutRef = useRef(null);
+      
       // KAWALAN SEKURITI & KOLABORASI (SEMAKAN TAB 'DO' & PASSKEY DIJANA OTOMATIK OLEH SKRIP)
       // 'DO' = Pegawai dalam Tab DO (Akses penuh termasuk tambah/buang program NOSS + lihat passkey harian)
       // 'PEMBANTU' = Kolaborasi melalui passkey yang dijana skrip (Boleh buat semua hal KECUALI tambah program)
@@ -516,14 +520,60 @@
               }
 
               // Tarik data pemetaan kolaborasi (modul, petak tanda X, jam) dari awan Google Sheets secara automatik
-              handlePullFromCloud(true);
+              await handlePullFromCloud(true);
             }
           } catch (e) {
             console.log("Menggunakan dataset pangkalan data tempatan:", e);
+          } finally {
+            // Beri sedikit jeda supaya state stabil sebelum auto-save mula memantau perubahan
+            setTimeout(() => {
+              isDataLoadedRef.current = true;
+            }, 1200);
           }
         };
         fetchAuto();
       }, []);
+
+      // 1. AUTO-SAVE DEBOUNCE (SIMPAN AUTOMATIK KE CLOUD SETIAP KALI DATA BERUBAH)
+      useEffect(() => {
+        if (!isDataLoadedRef.current || userRole === "GUEST") return;
+        if (modules.length === 0 && selectedNossCodes.length === 0) return;
+
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+        saveTimeoutRef.current = setTimeout(() => {
+          handleSaveToCloud(true);
+        }, 2200); // 2.2 saat selepas pengguna selesai menanda/menaip
+
+        return () => {
+          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        };
+      }, [modules, manualCompliance, gapRemarks, committeeRemarks, agencyName, programName, selectedNossCodes, userRole]);
+
+      // 2. AUTO-SYNC PERIODIK (SEMAK & TARIK KEMASKINI RAKAN KOLABORATOR SECARA SENYAP SETIAP 30 SAAT)
+      useEffect(() => {
+        if (userRole === "GUEST") return;
+        const syncInterval = setInterval(() => {
+          if (isDataLoadedRef.current && !isCloudSaving && document.visibilityState === "visible") {
+            handlePullFromCloud(true);
+          }
+        }, 30000); // 30 saat
+
+        return () => clearInterval(syncInterval);
+      }, [isCloudSaving, userRole]);
+
+      // 3. AMARAN JIKA PENGGUNA CUBA TUTUP/REFRESH TAB KETIKA SEDANG SIMPAN
+      useEffect(() => {
+        const handleBeforeUnload = (e) => {
+          if (isCloudSaving) {
+            e.preventDefault();
+            e.returnValue = "Perubahan pemetaan sedang disimpan ke awan. Adakah anda pasti mahu keluar?";
+            return e.returnValue;
+          }
+        };
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+      }, [isCloudSaving]);
 
       // SENARAI SEMUA PROGRAM YANG TERPILIH (MULTI-NOSS)
       const selectedPrograms = useMemo(() => {
@@ -959,33 +1009,40 @@
                     </span>
                   </button>
 
-                  {/* BUTANG SIMPAN KE CLOUD (KOLABORASI REAL-TIME) */}
-                  <button
-                    onClick={() => handleSaveToCloud(false)}
-                    disabled={isCloudSaving || userRole === 'GUEST'}
-                    className={`flex items-center gap-1.5 font-medium px-2.5 py-1.5 rounded-lg shadow text-xs transition ${
-                      userRole === 'GUEST'
-                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                        : isCloudSaving
-                        ? 'bg-amber-600 text-white animate-pulse'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    }`}
-                    title={userRole === 'GUEST' ? 'Sila sahkan akses DO atau Passkey untuk menyimpan' : 'Simpan semua modul, tanda petak X, jam & ulasan ke Google Sheets untuk disegerakkan'}
-                  >
-                    <svg className={`w-3.5 h-3.5 ${isCloudSaving ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                    <span>{isCloudSaving ? "Menyimpan..." : "Simpan ke Cloud"}</span>
-                  </button>
-
-                  {/* BUTANG SEGERAK TERKINI (TARIK DARI CLOUD) */}
-                  <button
+                  {/* LENCANA STATUS AUTO-SAVE & SEGERAK AWAN */}
+                  <div 
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-slate-800/90 border border-slate-700/80 shadow-xs cursor-pointer hover:bg-slate-800 transition" 
                     onClick={() => handlePullFromCloud(false)}
-                    disabled={isCloudLoading}
-                    className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-2.5 py-1.5 rounded-lg shadow text-xs transition"
-                    title="Muat semula data pemetaan terkini yang disimpan oleh rakan kolaborator"
+                    title={lastSyncTime ? `Disimpan: ${lastSyncTime} oleh ${lastSyncUser || "Sistem"}. Klik untuk segerak manual.` : "Auto-Save Aktif. Klik untuk segerak manual."}
                   >
-                    <svg className={`w-3.5 h-3.5 text-teal-400 ${isCloudLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    <span>{isCloudLoading ? "Menyegerak..." : "Segerak Terkini"}</span>
-                  </button>
+                    {isCloudSaving ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                        <span className="text-amber-300 font-medium text-[11px] flex items-center gap-1">
+                          <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                          Menyimpan...
+                        </span>
+                      </>
+                    ) : isCloudLoading ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
+                        <span className="text-teal-300 font-medium text-[11px] flex items-center gap-1">
+                          <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                          Menyegerak...
+                        </span>
+                      </>
+                    ) : lastSyncTime ? (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span className="text-emerald-300 font-medium text-[11px]">✓ Disimpan Awan</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                        <span className="text-slate-400 text-[11px]">Auto-Save Aktif</span>
+                      </>
+                    )}
+                  </div>
 
                                     {/* Cetak Rasmi */}
                   <button 

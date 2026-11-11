@@ -11,6 +11,8 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <!-- Babel for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Google Identity Services (OAuth / Sign-In) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- SheetJS (xlsx) for Excel processing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
@@ -231,6 +233,13 @@
       const [programName, setProgramName] = useState("DIPLOMA TEKNOLOGI KIMPALAN & FABRIKASI");
 
       const [modules, setModules] = useState(INITIAL_MODULES);
+
+      // STATUS SINKRONISASI KOLABORASI REAL-TIME
+      const [isCloudSaving, setIsCloudSaving] = useState(false);
+      const [isCloudLoading, setIsCloudLoading] = useState(false);
+      const [lastSyncTime, setLastSyncTime] = useState("");
+      const [lastSyncUser, setLastSyncUser] = useState("");
+      const [cloudStatusMsg, setCloudStatusMsg] = useState("");
       
       // KAWALAN SEKURITI & KOLABORASI (SEMAKAN TAB 'DO' & PASSKEY DIJANA OTOMATIK OLEH SKRIP)
       // 'DO' = Pegawai dalam Tab DO (Akses penuh termasuk tambah/buang program NOSS + lihat passkey harian)
@@ -248,6 +257,129 @@
       const [authLoading, setAuthLoading] = useState(false);
       const [passkeyError, setPasskeyError] = useState("");
       const [copiedPasskey, setCopiedPasskey] = useState(false);
+
+      
+      // Helper: Baca payload JWT Google Credential
+      const parseJwt = (token) => {
+        try {
+          const base64Url = token.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          }).join(''));
+          return JSON.parse(jsonPayload);
+        } catch (e) {
+          return null;
+        }
+      };
+
+      // FUNGSI SIMPAN PEMETAAN KE CLOUD GOOGLE SHEETS ('KOLABORASI')
+      const handleSaveToCloud = async (isSilent = false) => {
+        setIsCloudSaving(true);
+        if (!isSilent) setCloudStatusMsg("Menyimpan ke Cloud...");
+        try {
+          const payload = {
+            action: 'saveCollaborativeData',
+            editorName: userRole === 'DO' ? (doProfile?.name || 'Pegawai DO') : 'Pembantu Kolaborasi',
+            data: {
+              selectedNossCodes,
+              modules,
+              manualCompliance,
+              gapRemarks,
+              committeeRemarks,
+              agencyName,
+              programName
+            }
+          };
+
+          const res = await fetch(DEFAULT_GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          const resJson = await res.json();
+          if (resJson && resJson.success) {
+            setLastSyncTime(resJson.lastUpdated);
+            setLastSyncUser(resJson.updatedBy);
+            setCloudStatusMsg("Disimpan ke Cloud");
+            if (!isSilent) alert("Data pemetaan (modul, tanda petak, jam & ulasan) berjaya disimpan ke awan Google Sheets! Semua kolaborator kini boleh melihat kemas kini ini.");
+          } else {
+            setCloudStatusMsg("Gagal simpan");
+          }
+        } catch (err) {
+          console.error("Ralat simpan ke cloud:", err);
+          setCloudStatusMsg("Ralat sambungan");
+        } finally {
+          setIsCloudSaving(false);
+          setTimeout(() => setCloudStatusMsg(""), 4000);
+        }
+      };
+
+      // FUNGSI TARIK DATA PEMETAAN TERKINI DARI CLOUD GOOGLE SHEETS
+      const handlePullFromCloud = async (isSilent = false) => {
+        setIsCloudLoading(true);
+        if (!isSilent) setCloudStatusMsg("Menarik data terkini...");
+        try {
+          const res = await fetch(`${DEFAULT_GAS_URL}?action=getCollaborativeData`);
+          const json = await res.json();
+          if (json && json.success && json.data) {
+            const d = json.data;
+            if (d.selectedNossCodes && d.selectedNossCodes.length > 0) setSelectedNossCodes(d.selectedNossCodes);
+            if (d.modules && Array.isArray(d.modules)) setModules(d.modules);
+            if (d.manualCompliance) setManualCompliance(d.manualCompliance);
+            if (d.gapRemarks) setGapRemarks(d.gapRemarks);
+            if (d.committeeRemarks) setCommitteeRemarks(d.committeeRemarks);
+            if (d.agencyName) setAgencyName(d.agencyName);
+            if (d.programName) setProgramName(d.programName);
+            if (json.lastUpdated) setLastSyncTime(json.lastUpdated);
+            if (json.updatedBy) setLastSyncUser(json.updatedBy);
+            setCloudStatusMsg("Data terkini dimuatkan");
+            if (!isSilent) alert(`Berjaya menarik data pemetaan terkini (dikemas kini oleh ${json.updatedBy} pada ${json.lastUpdated})!`);
+            return true;
+          } else {
+            if (!isSilent) alert("Tiada rekod pemetaan awan ditemui dalam Tab KOLABORASI lagi. Sila klik 'Simpan ke Cloud' untuk mula menyimpan draf pertama.");
+          }
+        } catch (e) {
+          console.warn("Gagal menarik data kolaborasi:", e);
+          if (!isSilent) alert("Gagal menghubungi pangkalan data awan. Sila semak sambungan internet anda.");
+        } finally {
+          setIsCloudLoading(false);
+          setTimeout(() => setCloudStatusMsg(""), 4000);
+        }
+        return false;
+      };
+
+      // Pengesahan automatik Google Credential Response
+      const handleGoogleCredentialResponse = async (response) => {
+        setAuthLoading(true);
+        setPasskeyError("");
+        try {
+          const payload = parseJwt(response.credential);
+          if (payload && payload.email) {
+            const email = payload.email.toLowerCase();
+            const url = `${DEFAULT_GAS_URL}?action=verifyDO&email=${encodeURIComponent(email)}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data && data.valid) {
+              setUserRole("DO");
+              const profile = { name: data.name || payload.name, unit: data.unit, email: email, picture: payload.picture };
+              setDoProfile(profile);
+              setDailyAutoPasskey(data.autoPasskey || "");
+              localStorage.setItem("noss_user_role", "DO");
+              localStorage.setItem("noss_do_profile", JSON.stringify(profile));
+              if (data.autoPasskey) localStorage.setItem("noss_daily_passkey", data.autoPasskey);
+              setShowPasskeyModal(false);
+            } else {
+              setPasskeyError(data.message || `Akaun Google anda (${email}) tidak tersenarai sebagai pegawai DO yang dibenarkan.`);
+            }
+          } else {
+            setPasskeyError("Gagal membaca maklumat pengesahan akaun Google.");
+          }
+        } catch (err) {
+          setPasskeyError("Ralat semasa pengesahan akaun Google: " + err.message);
+        } finally {
+          setAuthLoading(false);
+        }
+      };
 
       const handleVerifyDOEmail = async (e) => {
         e.preventDefault();
@@ -382,6 +514,9 @@
                   localStorage.setItem("noss_active_program", validCodes[0]);
                 }
               }
+
+              // Tarik data pemetaan kolaborasi (modul, petak tanda X, jam) dari awan Google Sheets secara automatik
+              handlePullFromCloud(true);
             }
           } catch (e) {
             console.log("Menggunakan dataset pangkalan data tempatan:", e);
@@ -824,7 +959,35 @@
                     </span>
                   </button>
 
-                  {/* Cetak Rasmi */}
+                  {/* BUTANG SIMPAN KE CLOUD (KOLABORASI REAL-TIME) */}
+                  <button
+                    onClick={() => handleSaveToCloud(false)}
+                    disabled={isCloudSaving || userRole === 'GUEST'}
+                    className={`flex items-center gap-1.5 font-medium px-2.5 py-1.5 rounded-lg shadow text-xs transition ${
+                      userRole === 'GUEST'
+                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                        : isCloudSaving
+                        ? 'bg-amber-600 text-white animate-pulse'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    }`}
+                    title={userRole === 'GUEST' ? 'Sila sahkan akses DO atau Passkey untuk menyimpan' : 'Simpan semua modul, tanda petak X, jam & ulasan ke Google Sheets untuk disegerakkan'}
+                  >
+                    <svg className={`w-3.5 h-3.5 ${isCloudSaving ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    <span>{isCloudSaving ? "Menyimpan..." : "Simpan ke Cloud"}</span>
+                  </button>
+
+                  {/* BUTANG SEGERAK TERKINI (TARIK DARI CLOUD) */}
+                  <button
+                    onClick={() => handlePullFromCloud(false)}
+                    disabled={isCloudLoading}
+                    className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-2.5 py-1.5 rounded-lg shadow text-xs transition"
+                    title="Muat semula data pemetaan terkini yang disimpan oleh rakan kolaborator"
+                  >
+                    <svg className={`w-3.5 h-3.5 text-teal-400 ${isCloudLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>{isCloudLoading ? "Menyegerak..." : "Segerak Terkini"}</span>
+                  </button>
+
+                                    {/* Cetak Rasmi */}
                   <button 
                     onClick={() => window.print()}
                     className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-2.5 py-1.5 rounded-lg shadow text-xs transition"
@@ -1307,6 +1470,19 @@
 
                     </table>
                   </div>
+
+                  {/* STATUS PENYELARASAN AWAN KOLABORASI */}
+                  {lastSyncTime && (
+                    <div className="bg-slate-950 px-3 py-1 text-[11px] text-slate-400 border-t border-slate-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>Segerak Cloud Terakhir: <strong className="text-slate-200">{lastSyncTime}</strong> oleh <strong className="text-indigo-300">{lastSyncUser || "DO"}</strong></span>
+                      </div>
+                      {cloudStatusMsg && (
+                        <span className="text-amber-400 font-medium">{cloudStatusMsg}</span>
+                      )}
+                    </div>
+                  )}
 
                   {/* BAR STATUS KURSOR LALU */}
                   <div className="bg-slate-900 text-slate-200 px-3 py-1.5 text-xs flex items-center justify-between border-t border-slate-700">
@@ -1916,34 +2092,72 @@
                         </div>
                       </form>
                     ) : (
-                      <form onSubmit={handleVerifyDOEmail} className="space-y-3 pt-1">
-                        <div>
-                          <label className="block font-semibold text-slate-700 mb-1">Emel Rasmi Pegawai (Tab DO):</label>
-                          <input
-                            type="email"
-                            value={inputDoEmail}
-                            onChange={(e) => setInputDoEmail(e.target.value)}
-                            placeholder="nama@mohr.gov.my"
-                            className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-amber-500 text-xs"
-                            autoFocus
-                            required
-                          />
-                          <p className="text-[10px] text-slate-500 mt-1">
-                            Sistem akan mengesahkan emel anda daripada helaian <strong>DO</strong> dan menjana passkey kolaborasi secara automatik.
-                          </p>
-                        </div>
-
-                        {passkeyError && (
-                          <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 p-2 rounded border border-rose-200">{passkeyError}</p>
-                        )}
-
-                        <div className="flex justify-end gap-2 pt-2 border-t">
-                          <button type="button" onClick={() => setShowPasskeyModal(false)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded">Tutup</button>
-                          <button type="submit" disabled={authLoading} className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded shadow">
-                            {authLoading ? "Mengesahkan..." : "Sahkan Emel DO"}
+                      <div className="space-y-3 pt-1">
+                        {/* BUTANG LOG MASUK RASMI GOOGLE (OAUTH) */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center space-y-2">
+                          <p className="text-slate-700 font-semibold text-xs">Pilihan 1: Log Masuk Pantas Akaun Google</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Semakan menggunakan akaun Google yang aktif di pelayar
+                              if (window.google && window.google.accounts && window.google.accounts.id) {
+                                window.google.accounts.id.initialize({
+                                  client_id: "704874499092-auth.apps.googleusercontent.com", // Generic fallback
+                                  callback: handleGoogleCredentialResponse,
+                                  auto_select: false
+                                });
+                                window.google.accounts.id.prompt();
+                              } else {
+                                alert("Pustaka Google Sign-In sedang dimuatkan. Anda juga boleh memasukkan emel rasmi di bawah.");
+                              }
+                            }}
+                            className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs font-semibold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24">
+                              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                            </svg>
+                            <span>Sign in with Google</span>
                           </button>
                         </div>
-                      </form>
+
+                        <div className="relative flex py-1 items-center">
+                          <div className="flex-grow border-t border-slate-200"></div>
+                          <span className="flex-shrink mx-2 text-[10px] text-slate-400 font-semibold uppercase">atau taip emel DO</span>
+                          <div className="flex-grow border-t border-slate-200"></div>
+                        </div>
+
+                        {/* PILIHAN 2: BORANG TAIP EMEL RASMI PEGAWAI */}
+                        <form onSubmit={handleVerifyDOEmail} className="space-y-3">
+                          <div>
+                            <label className="block font-semibold text-slate-700 mb-1">Emel Rasmi Pegawai (Tab DO):</label>
+                            <input
+                              type="email"
+                              value={inputDoEmail}
+                              onChange={(e) => setInputDoEmail(e.target.value)}
+                              placeholder="faizalmajid@mohr.gov.my"
+                              className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-amber-500 text-xs font-mono"
+                              required
+                            />
+                            <p className="text-[10px] text-slate-500 mt-1">
+                              Sistem akan mengesahkan emel daripada Tab DO di Google Sheets anda.
+                            </p>
+                          </div>
+
+                          {passkeyError && (
+                            <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 p-2 rounded border border-rose-200">{passkeyError}</p>
+                          )}
+
+                          <div className="flex justify-end gap-2 pt-2 border-t">
+                            <button type="button" onClick={() => setShowPasskeyModal(false)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded">Tutup</button>
+                            <button type="submit" disabled={authLoading} className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded shadow">
+                              {authLoading ? "Mengesahkan..." : "Sahkan Emel DO"}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
                     )}
                   </div>
                 )}

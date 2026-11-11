@@ -161,6 +161,7 @@
       const normalized = {};
 
       Object.keys(rawData).forEach(progCode => {
+        if (progCode === '_ACTIVE_NOSS_SELECTION_') return; // Abaikan entri metadata
         const item = rawData[progCode];
         const progTitle = item.name || item.title || progCode;
         const progTahap = item.tahap || '4';
@@ -349,6 +350,14 @@
       useEffect(() => {
         const fetchAuto = async () => {
           try {
+            // 1. Semak sama ada URL ada parameter ?noss=... atau ?passkey=...
+            const urlParams = new URLSearchParams(window.location.search);
+            const paramNoss = urlParams.get("noss");
+            const paramPasskey = urlParams.get("passkey");
+            if (paramPasskey) {
+              setInputPasskey(paramPasskey);
+            }
+
             let finalUrl = DEFAULT_GAS_URL;
             if (!finalUrl.includes("action=")) {
               finalUrl += (finalUrl.includes("?") ? "&" : "?") + "action=getMappingData";
@@ -356,10 +365,23 @@
             const res = await fetch(finalUrl);
             const data = await res.json();
             if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+              // 2. Ekstrak program aktif yang disimpan oleh DO di Google Apps Script
+              const serverActiveCodes = data._ACTIVE_NOSS_SELECTION_?.activeCodes || [];
               const cleanDB = normalizeNossData(data);
               setNossDatabase(cleanDB);
-              // Biarkan kosong supaya pengguna pilih sendiri dari dropdown
               setApiSuccessBadge(true);
+
+              // 3. Selaraskan pilihan program: Keutamaan kepada URL Param -> Pilihan Cloud DO -> LocalStorage
+              if (paramNoss) {
+                const list = paramNoss.split(",").filter(c => cleanDB[c]);
+                if (list.length > 0) setSelectedNossCodes(list);
+              } else if (serverActiveCodes.length > 0) {
+                const validCodes = serverActiveCodes.filter(c => cleanDB[c]);
+                if (validCodes.length > 0) {
+                  setSelectedNossCodes(validCodes);
+                  localStorage.setItem("noss_active_program", validCodes[0]);
+                }
+              }
             }
           } catch (e) {
             console.log("Menggunakan dataset pangkalan data tempatan:", e);
@@ -376,14 +398,30 @@
       }, [selectedNossCodes, nossDatabase]);
 
       // TAMBAH / BUANG PROGRAM DARI GABUNGAN
+      
+      // Fungsi Segerak Program Aktif DO ke Google Apps Script (Cloud Sync)
+      const syncActiveProgramsToCloud = async (codes) => {
+        try {
+          const progsStr = encodeURIComponent(codes.join(","));
+          const syncUrl = `${DEFAULT_GAS_URL}?action=setActivePrograms&programs=${progsStr}`;
+          await fetch(syncUrl);
+        } catch (err) {
+          console.warn("Gagal menyegerakkan program aktif ke cloud:", err);
+        }
+      };
+
       const handleAddProgram = (code) => {
         if (!code || selectedNossCodes.includes(code)) return;
-        setSelectedNossCodes(prev => [...prev, code]);
+        const updated = [...selectedNossCodes, code];
+        setSelectedNossCodes(updated);
         setShowAddProgramDropdown(false);
+        if (userRole === "DO") syncActiveProgramsToCloud(updated);
       };
 
       const handleRemoveProgram = (code) => {
-        setSelectedNossCodes(prev => prev.filter(c => c !== code));
+        const updated = selectedNossCodes.filter(c => c !== code);
+        setSelectedNossCodes(updated);
+        if (userRole === "DO") syncActiveProgramsToCloud(updated);
       };
 
       // TUKAR PROGRAM UTAMA TUNGGAL (Jika guna dropdown mod biasa)
@@ -392,12 +430,14 @@
           alert("Akses Terhad: Hanya Pegawai DO dibenarkan memilih atau menukar program NOSS.");
           return;
         }
-        setSelectedNossCodes(code ? [code] : []);
+        const updated = code ? [code] : [];
+        setSelectedNossCodes(updated);
         if (code) {
           localStorage.setItem("noss_active_program", code);
         } else {
           localStorage.removeItem("noss_active_program");
         }
+        syncActiveProgramsToCloud(updated);
       };
 
       // Covered WAs set
@@ -1767,6 +1807,24 @@
                           className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded transition"
                         >
                           {copiedPasskey ? "✓ Disalin" : "Salin Passkey"}
+                        </button>
+                      </div>
+
+                      {/* BUTANG SALIN PAUTAN KOLABORASI SEGERAK */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const baseUrl = window.location.origin + window.location.pathname;
+                            const progs = selectedNossCodes.join(",");
+                            const shareUrl = `${baseUrl}?noss=${encodeURIComponent(progs)}&passkey=${encodeURIComponent(dailyAutoPasskey)}`;
+                            navigator.clipboard.writeText(shareUrl);
+                            alert("Pautan kolaborasi telah disalin! Pembantu yang membuka pautan ini akan terus melihat program NOSS yang sama.");
+                          }}
+                          className="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold py-2 px-3 rounded flex items-center justify-center gap-1.5 transition shadow"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                          <span>Salin Pautan Kolaborasi (Bersama Program Terpilih)</span>
                         </button>
                       </div>
                       <p className="text-[10px] text-slate-400 leading-relaxed">

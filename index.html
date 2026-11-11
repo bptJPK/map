@@ -14,7 +14,6 @@
   <!-- SheetJS (xlsx) for Excel processing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    /* PRINT OPTIMIZATION (Fit landscape, no cutoff, 2 columns for Ya/Tidak) */
     @page {
       size: A4 landscape;
       margin: 8mm 6mm;
@@ -42,10 +41,9 @@
         word-break: break-word !important;
       }
       .page-break { page-break-after: always; }
-      .sticky-col-1, .sticky-col-2, .sticky-col-3, .sticky-header { position: static !important; }
+      .sticky-c1, .sticky-c2, .sticky-c3, .sticky { position: static !important; }
       .print-show-col { display: table-cell !important; }
       .print-hide-col { display: none !important; }
-      /* Ensure editable inputs look like plain text in print */
       input, textarea, select {
         border: none !important;
         background: transparent !important;
@@ -58,24 +56,10 @@
     .print-only { display: none; }
     .print-show-col { display: none; }
 
-    /* Fixed Table Layout for exact freeze panes alignment */
-    .table-fixed-matrix {
-      table-layout: fixed;
-      border-collapse: separate;
-      border-spacing: 0;
-    }
-
-    /* Column Widths */
-    .col-no { width: 46px; min-width: 46px; max-width: 46px; }
-    .col-modul { width: 280px; min-width: 280px; max-width: 280px; }
-    .col-action { width: 44px; min-width: 44px; max-width: 44px; }
-    .col-wa { width: 40px; min-width: 40px; max-width: 40px; }
-    .col-wa-collapsed { width: 50px; min-width: 50px; max-width: 50px; }
-
     /* Sticky Positions Left */
-    .sticky-c1 { position: sticky; left: 0px; z-index: 20; }
-    .sticky-c2 { position: sticky; left: 46px; z-index: 20; }
-    .sticky-c3 { position: sticky; left: 326px; z-index: 20; }
+    .sticky-c1 { position: sticky; left: 0px; z-index: 25; }
+    .sticky-c2 { position: sticky; left: 44px; z-index: 25; }
+    .sticky-c3 { position: sticky; left: 324px; z-index: 25; }
 
     /* Vertical Text Rotation for WA Headers */
     .wa-vertical-title {
@@ -103,10 +87,13 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useMemo } = React;
+    const { useState, useMemo, useEffect } = React;
 
-    // --- DATASET SKPK (NOSS) ---
-    const NOSS_DATASETS = {
+    // URL Web App Google Apps Script Lalai Anda
+    const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbyhpqwlzs3SopGhZcqy525nBHalfCg9nbvKSRygrdpAZ5DNvvEbfjBanrnSWieNar8V/exec";
+
+    // Pangkalan data sandaran awal (fallback) jika tiada sambungan internet
+    const FALLBACK_NOSS_DB = {
       "MC-024-4:2012": {
         code: "MC-024-4:2012",
         title: "PENGURUSAN TEKNOLOGI KIMPALAN",
@@ -142,26 +129,9 @@
             ]
           }
         ]
-      },
-      "G452-002-2:2018": {
-        code: "G452-002-2:2018",
-        title: "AFTER SALES - SERVICING",
-        tahap: "2",
-        cus: [
-          {
-            id: "CU1",
-            code: "G452-002-2:2018-C01",
-            title: "WORKSHOP HOUSEKEEPING & 5S COMPLIANCE",
-            was: [
-              { id: "WA1", code: "C01-W01", title: "Identify workshop housekeeping requirements.", rk: "Safety rules, OSHA compliance, 5S standards.", rkHours: 15, rs: "Perform pre-inspection of workshop layout.", rsHours: 40 },
-              { id: "WA2", code: "C01-W02", title: "Prepare workshop housekeeping setup.", rk: "Cleaning chemicals, waste material disposal.", rkHours: 20, rs: "Prepare cleaning tools, segregate toxic waste.", rsHours: 50 }
-            ]
-          }
-        ]
       }
     };
 
-    // --- DATASET LALAI AGENSI ---
     const INITIAL_MODULES = [
       {
         id: "MOD-1",
@@ -236,8 +206,68 @@
       }
     ];
 
+    // Fungsi normalisasi data NOSS agar serasi dengan kedua-dua format lama dan baru
+    function normalizeNossData(rawData) {
+      if (!rawData || typeof rawData !== 'object') return {};
+      const normalized = {};
+
+      Object.keys(rawData).forEach(progCode => {
+        const item = rawData[progCode];
+        const progTitle = item.name || item.title || progCode;
+        const progTahap = String(item.tahap || '').replace(/^Tahap\s*/i, '') || '4';
+
+        const cusList = (item.cus || []).map((cu, cIdx) => {
+          const cuId = cu.id || `CU${cIdx + 1}`;
+          const cuCode = cu.code || `${progCode}-C0${cIdx + 1}`;
+          const cuTitle = cu.title || cu.name || cuCode;
+
+          // Normalisasi ceraian WA (jika hanya array string daripada getProgramData lama)
+          const wasList = (cu.was || []).map((wa, wIdx) => {
+            const waId = `WA${wIdx + 1}`;
+            if (typeof wa === 'string') {
+              return {
+                id: waId,
+                code: `${cuCode}-W0${wIdx + 1}`,
+                title: wa,
+                rk: `Pengetahuan teori berkaitan ${wa}`,
+                rs: `Kemahiran praktikal ${wa}`,
+                rkHours: 20,
+                rsHours: 40
+              };
+            }
+            return {
+              id: wa.id || waId,
+              code: wa.code || `${cuCode}-W0${wIdx + 1}`,
+              title: wa.title || wa.name || `Tugasan ${waId}`,
+              rk: wa.rk || `Pengetahuan teori berkaitan ${wa.title || ''}`,
+              rs: wa.rs || `Kemahiran amali ${wa.title || ''}`,
+              rkHours: Number(wa.rkHours) || 20,
+              rsHours: Number(wa.rsHours) || 40
+            };
+          });
+
+          return {
+            id: cuId,
+            code: cuCode,
+            title: cuTitle,
+            was: wasList
+          };
+        });
+
+        normalized[progCode] = {
+          code: progCode,
+          title: progTitle,
+          tahap: progTahap,
+          cus: cusList
+        };
+      });
+
+      return normalized;
+    }
+
     function App() {
-      const [activeTab, setActiveTab] = useState("tab1"); // "tab1" = Matriks Standard | "tab2" = Padanan Kandungan
+      const [activeTab, setActiveTab] = useState("tab1");
+      const [nossDatabase, setNossDatabase] = useState(FALLBACK_NOSS_DB);
       const [currentNossCode, setCurrentNossCode] = useState("MC-024-4:2012");
       const [modules, setModules] = useState(INITIAL_MODULES);
       const [collapsedCUs, setCollapsedCUs] = useState({});
@@ -248,23 +278,44 @@
       const [focusMode, setFocusMode] = useState(false);
       const [hoveredWA, setHoveredWA] = useState(null);
 
-      // State khusus untuk pengubahsuaian status manual di Tab 2 (Manual Override: "YA" | "TIDAK")
+      // Pautan Apps Script / Google Sheets
+      const [showApiModal, setShowApiModal] = useState(false);
+      const [apiUrl, setApiUrl] = useState(() => localStorage.getItem("noss_api_url") || DEFAULT_GAS_URL);
+      const [isLoadingData, setIsLoadingData] = useState(false);
+      const [apiSuccessBadge, setApiSuccessBadge] = useState(false);
+
       const [manualCompliance, setManualCompliance] = useState({});
-      // State catatan jurang (GAP) boleh disunting terus
       const [gapRemarks, setGapRemarks] = useState({});
+      const [committeeRemarks, setCommitteeRemarks] = useState({});
 
-      const [committeeRemarks, setCommitteeRemarks] = useState({
-        CU1: "Semua ceraian WA dipenuhi dengan baik mengikut piawaian.",
-        CU2: "Perlu penambahan jam amali bagi WA3 (NDT evaluation).",
-        CU3: "Modul memenuhi keperluan asas perancangan bahan kimpalan."
-      });
+      // Auto-fetch data daripada Google Apps Script Web App semasa kali pertama dibuka
+      useEffect(() => {
+        const fetchAuto = async () => {
+          setIsLoadingData(true);
+          try {
+            let finalUrl = apiUrl || DEFAULT_GAS_URL;
+            if (!finalUrl.includes("action=")) {
+              finalUrl += (finalUrl.includes("?") ? "&" : "?") + "action=getData";
+            }
+            const res = await fetch(finalUrl);
+            const data = await res.json();
+            if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+              const cleanDB = normalizeNossData(data);
+              setNossDatabase(cleanDB);
+              const firstKey = Object.keys(cleanDB)[0];
+              if (firstKey) setCurrentNossCode(firstKey);
+              setApiSuccessBadge(true);
+            }
+          } catch (e) {
+            console.log("Menggunakan dataset pangkalan data tempatan:", e);
+          } finally {
+            setIsLoadingData(false);
+          }
+        };
+        fetchAuto();
+      }, []);
 
-      const currentNoss = NOSS_DATASETS[currentNossCode] || NOSS_DATASETS["MC-024-4:2012"];
-
-      // Total WA in current NOSS
-      const totalProgramWA = useMemo(() => {
-        return currentNoss.cus.reduce((acc, c) => acc + c.was.length, 0);
-      }, [currentNoss]);
+      const currentNoss = nossDatabase[currentNossCode] || Object.values(nossDatabase)[0] || FALLBACK_NOSS_DB["MC-024-4:2012"];
 
       // Covered WAs set from mapping
       const coveredWAIds = useMemo(() => {
@@ -280,6 +331,7 @@
       // CU Statistics & Coverage Count
       const cuStats = useMemo(() => {
         const stats = {};
+        if (!currentNoss || !currentNoss.cus) return stats;
         currentNoss.cus.forEach(cu => {
           const totalWA = cu.was.length;
           const metWA = cu.was.filter(wa => coveredWAIds.has(`${cu.id}-${wa.id}`)).length;
@@ -290,26 +342,57 @@
         return stats;
       }, [currentNoss, coveredWAIds]);
 
-      // Modul Coverage check (Modul Induk & Submodul) + Modul % Coverage
+      // Formula Peratusan Liputan Modul: (Submodul yang ada 'X' / Jumlah Submodul) * 100
       const moduleStats = useMemo(() => {
         const stats = {};
         modules.forEach(m => {
-          const modUniqueWAs = new Set();
-          m.subModules.forEach(sm => {
-            (sm.matchedWAs || []).forEach(w => modUniqueWAs.add(w));
-          });
-          const countMet = modUniqueWAs.size;
-          const pct = totalProgramWA > 0 ? Math.round((countMet / totalProgramWA) * 100) : 0;
+          const totalSub = m.subModules.length;
+          const coveredSubs = m.subModules.filter(sm => (sm.matchedWAs || []).length > 0).length;
+          const pct = totalSub > 0 ? Math.round((coveredSubs / totalSub) * 100) : 0;
           stats[m.id] = {
-            hasAny: countMet > 0,
-            countMet,
+            hasAny: coveredSubs > 0,
+            coveredSubs,
+            totalSub,
             pct
           };
         });
         return stats;
-      }, [modules, totalProgramWA]);
+      }, [modules]);
 
-      // Toggle Matrix Tick 'X'
+      // Ambil data secara manual
+      const fetchLiveData = async (targetUrl) => {
+        const ep = targetUrl || apiUrl;
+        if (!ep) {
+          setShowApiModal(true);
+          return;
+        }
+        setIsLoadingData(true);
+        try {
+          let finalUrl = ep;
+          if (!finalUrl.includes("action=")) {
+            finalUrl += (finalUrl.includes("?") ? "&" : "?") + "action=getData";
+          }
+          const response = await fetch(finalUrl);
+          const data = await response.json();
+          if (data && typeof data === "object" && Object.keys(data).length > 0) {
+            const cleanDB = normalizeNossData(data);
+            setNossDatabase(cleanDB);
+            const firstKey = Object.keys(cleanDB)[0];
+            if (firstKey) setCurrentNossCode(firstKey);
+            localStorage.setItem("noss_api_url", ep);
+            setApiSuccessBadge(true);
+            alert("Data NOSS & SKPK berjaya dimuatkan terus dari Google Sheets!");
+            setShowApiModal(false);
+          } else {
+            alert("Format data kosong atau tidak dikenali.");
+          }
+        } catch (err) {
+          alert("Gagal menyambung: " + err.message + "\nPastikan Web App Google Apps Script telah dideploy dengan akses 'Anyone'.");
+        } finally {
+          setIsLoadingData(false);
+        }
+      };
+
       const toggleMatch = (subId, globalWaId) => {
         setModules(prev => prev.map(m => ({
           ...m,
@@ -343,7 +426,6 @@
         }));
       };
 
-      // Suntingan langsung modul di Tab 2
       const handleUpdateSubModuleField = (modId, subId, field, value) => {
         setModules(prev => prev.map(m => {
           if (m.id !== modId) return m;
@@ -357,7 +439,6 @@
         }));
       };
 
-      // Toggle Status Memenuhi di Tab 2
       const toggleComplianceStatus = (gId, defaultStatus) => {
         const current = manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultStatus;
         setManualCompliance({
@@ -366,11 +447,9 @@
         });
       };
 
-      // Dynamic Sticky Top Offsets (Fixing Header Disconnect when Hiding WA Titles)
-      const r2Top = showFullWA ? "top-[125px]" : "top-[36px]";
-      const r3Top = showFullWA ? "top-[165px]" : "top-[76px]";
+      const r2Top = showFullWA ? "top-[128px]" : "top-[38px]";
+      const r3Top = showFullWA ? "top-[168px]" : "top-[78px]";
 
-      // File upload handler
       const handleFileUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -461,17 +540,28 @@
                 </div>
 
                 <div className="flex items-center flex-wrap gap-2 text-xs">
-                  {/* SELECTOR NOSS */}
+                  {/* SELECTOR NOSS DENGAN LIVE GOOGLE SHEETS LINK */}
                   <div className="bg-slate-800 border border-slate-700 px-2 py-1 rounded-lg flex items-center gap-1.5">
                     <span className="text-amber-400 font-bold text-[11px]">NOSS:</span>
                     <select
                       value={currentNossCode}
                       onChange={(e) => setCurrentNossCode(e.target.value)}
-                      className="bg-slate-900 text-slate-100 font-mono text-xs rounded border-none focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer"
+                      className="bg-slate-900 text-slate-100 font-mono text-xs rounded border-none focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer max-w-[220px] truncate"
                     >
-                      <option value="MC-024-4:2012">MC-024-4:2012 (Kimpalan T4)</option>
-                      <option value="G452-002-2:2018">G452-002-2:2018 (Automotif T2)</option>
+                      {Object.keys(nossDatabase).map(k => (
+                        <option key={k} value={k}>
+                          {k} ({nossDatabase[k].title ? nossDatabase[k].title.substring(0, 16) + '...' : ''} T{nossDatabase[k].tahap})
+                        </option>
+                      ))}
                     </select>
+
+                    <button
+                      onClick={() => setShowApiModal(true)}
+                      className={`p-1 rounded transition ${apiSuccessBadge ? 'text-emerald-400 hover:text-emerald-300' : 'text-slate-400 hover:text-amber-300'}`}
+                      title={apiSuccessBadge ? "Tersambung ke Google Sheets (Klik untuk ubah)" : "Tetapan Pautan Google Sheets"}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </button>
                   </div>
 
                   {/* Templat Excel Drive */}
@@ -497,6 +587,52 @@
                 </div>
               </div>
             </header>
+          )}
+
+          {/* MODAL SAMBUNGAN GOOGLE APPS SCRIPT */}
+          {showApiModal && (
+            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    Sambungan Pangkalan Data Google Sheets
+                  </h3>
+                  <button onClick={() => setShowApiModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                </div>
+                <div className="space-y-2 text-xs">
+                  <p className="text-slate-600 leading-relaxed">
+                    Pautan Web App Google Apps Script semasa anda:
+                  </p>
+                  <input
+                    type="url"
+                    value={apiUrl}
+                    onChange={(e) => setApiUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 font-mono text-[11px] bg-slate-50"
+                  />
+                  <div className="p-2.5 bg-blue-50 border border-blue-200 rounded text-blue-800 text-[11px] leading-tight space-y-1">
+                    <p className="font-semibold">💡 Nota Penyelarasan:</p>
+                    <p>Sistem ini menyokong fungsi <code>?action=getData</code> sedia ada anda dan terus membaca ceraian RSRK sekiranya tab RSRK wujud.</p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setShowApiModal(false)}
+                    className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded"
+                  >
+                    Tutup
+                  </button>
+                  <button
+                    onClick={() => fetchLiveData(apiUrl)}
+                    disabled={isLoadingData}
+                    className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded shadow"
+                  >
+                    {isLoadingData ? "Menyambung..." : "Segerakkan Sekarang"}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* BAR SEBARIS: NAMA TAB + 3 BUTANG KAWALAN */}
@@ -579,8 +715,8 @@
 
                   {/* Lencana Peratusan CU */}
                   <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-                    {currentNoss.cus.map(cu => {
-                      const st = cuStats[cu.id];
+                    {currentNoss.cus && currentNoss.cus.map(cu => {
+                      const st = cuStats[cu.id] || { metWA: 0, totalWA: 0, pct: 0 };
                       const isComplete = st.pct === 100;
                       return (
                         <div 
@@ -598,30 +734,30 @@
                   </div>
                 </div>
 
-                {/* JADUAL MATRIKS MAKRO DENGAN COVERAGE HIGHLIGHT & DYNAMIC FREEZE TOP OFFSETS */}
+                {/* JADUAL MATRIKS MAKRO TANPA TERHEROT */}
                 <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col">
                   <div className="overflow-x-auto max-h-[72vh] custom-scrollbar relative">
-                    <table className="table-fixed-matrix w-full text-left text-xs print-table">
+                    <table className="min-w-full text-left text-xs border-collapse print-table">
                       
                       <thead>
-                        {/* Baris 1: NO. WA/TASK (Header Menegak WA) */}
+                        {/* Baris 1: Header NO, MODUL & Header WA */}
                         <tr className="bg-slate-900 text-slate-200 text-xs">
-                          <th className="col-no sticky-c1 top-0 z-40 bg-slate-950 p-2 text-center border-b border-r border-slate-700 font-bold text-slate-300">
+                          <th className="sticky-c1 top-0 z-40 bg-slate-950 p-2 text-center border-b border-r border-slate-700 font-bold text-slate-300 w-[44px] min-w-[44px]">
                             NO
                           </th>
-                          <th className="col-modul sticky-c2 top-0 z-40 bg-slate-950 px-3 py-2 border-b border-r border-slate-700 font-bold text-slate-200 text-xs">
+                          <th className="sticky-c2 top-0 z-40 bg-slate-950 px-3 py-2 border-b border-r border-slate-700 font-bold text-slate-200 text-xs w-[280px] min-w-[280px]">
                             MODUL & KURIKULUM AGENSI
                           </th>
-                          <th className="col-action sticky-c3 top-0 z-40 bg-slate-950 p-1 border-b border-r border-slate-700 text-center">
-                            {/* Kosong */}
+                          <th className="sticky-c3 top-0 z-40 bg-slate-950 p-1 border-b border-r border-slate-700 text-center w-[44px] min-w-[44px]">
+                            {/* Tindakan */}
                           </th>
 
-                          {/* Kolum Melintang WA */}
-                          {currentNoss.cus.map(cu => {
+                          {/* Kolum Melintang WA mengikut NOSS terpilih */}
+                          {currentNoss.cus && currentNoss.cus.map(cu => {
                             const isCollapsed = collapsedCUs[cu.id];
                             if (isCollapsed) {
                               return (
-                                <th key={cu.id} className="col-wa-collapsed sticky top-0 z-30 bg-slate-900 text-slate-400 p-1 border-b border-r border-slate-700 text-center font-mono">
+                                <th key={cu.id} className="sticky top-0 z-30 bg-slate-900 text-slate-400 p-1 border-b border-r border-slate-700 text-center font-mono w-[50px] min-w-[50px]">
                                   {cu.id}
                                 </th>
                               );
@@ -632,7 +768,7 @@
                               return (
                                 <th 
                                   key={gId} 
-                                  className={`col-wa sticky top-0 z-30 border-b border-r border-slate-700 transition align-bottom ${isCovered ? 'bg-teal-900 text-teal-200 font-bold' : 'bg-slate-900 text-slate-300'} p-0 text-center`}
+                                  className={`sticky top-0 z-30 border-b border-r border-slate-700 transition align-bottom ${isCovered ? 'bg-teal-900 text-teal-200 font-bold' : 'bg-slate-900 text-slate-300'} p-0 text-center w-[42px] min-w-[42px]`}
                                   title={`${cu.id}-${wa.id}: ${wa.title}`}
                                   onMouseEnter={() => setHoveredWA({ cuId: cu.id, waId: wa.id, title: wa.title, rk: wa.rk, rs: wa.rs })}
                                   onMouseLeave={() => setHoveredWA(null)}
@@ -652,15 +788,15 @@
                           })}
                         </tr>
 
-                        {/* Baris 2: CU / DUTY (DYNAMIC TOP OFFSET: tiada lagi ruang hitam terputus!) */}
+                        {/* Baris 2: CU / DUTY (DYNAMIC TOP OFFSET KEMAS) */}
                         <tr className="bg-slate-800 text-slate-100 text-xs border-b border-slate-700">
                           <th colSpan="3" className={`sticky-c1 ${r2Top} z-40 bg-slate-800 px-3 py-1.5 border-r border-slate-700 font-bold text-slate-300 text-right uppercase text-[11px]`}>
                             CU / DUTY (UNIT KOMPETENSI SKPK)
                           </th>
 
-                          {currentNoss.cus.map(cu => {
+                          {currentNoss.cus && currentNoss.cus.map(cu => {
                             const isCollapsed = collapsedCUs[cu.id];
-                            const st = cuStats[cu.id];
+                            const st = cuStats[cu.id] || { metWA: 0, totalWA: 0, pct: 0, hasAnyCoverage: false };
                             const cuBgClass = st.pct === 100 
                               ? 'bg-emerald-900 text-emerald-100 border-b-2 border-emerald-400' 
                               : st.hasAnyCoverage 
@@ -710,7 +846,7 @@
                           <th colSpan="3" className={`sticky-c1 ${r3Top} z-40 bg-slate-800 px-3 py-1 border-r border-slate-700 text-right font-medium`}>
                             TAHAP
                           </th>
-                          {currentNoss.cus.map(cu => {
+                          {currentNoss.cus && currentNoss.cus.map(cu => {
                             const isCollapsed = collapsedCUs[cu.id];
                             if (isCollapsed) return <th key={cu.id} className={`sticky ${r3Top} z-30 bg-slate-800 p-1 border-r border-slate-700 text-center`}>{currentNoss.tahap}</th>;
                             return cu.was.map(wa => (
@@ -720,7 +856,7 @@
                         </tr>
                       </thead>
 
-                      {/* BADAN MATRIKS: MODUL DILENGKAPKAN PERSEN COVERAGE SEBELAH MODUL */}
+                      {/* BADAN MATRIKS */}
                       <tbody className="divide-y divide-slate-200 bg-white">
                         {modules.map((mod, modIdx) => {
                           const isModCollapsed = collapsedModules[mod.id];
@@ -728,15 +864,15 @@
 
                           return (
                             <React.Fragment key={mod.id}>
-                              {/* BARIS INDUK MODUL DENGAN LENCANA % COVERAGE DI SEBELAHNYA */}
+                              {/* BARIS INDUK MODUL */}
                               <tr className={`font-semibold border-t border-slate-300 transition ${mStat.hasAny ? 'bg-teal-100/60' : 'bg-slate-100'}`}>
-                                <td className={`col-no sticky-c1 p-2 text-center font-bold border-r border-slate-200 ${mStat.hasAny ? 'bg-teal-100 text-teal-900' : 'bg-slate-100 text-slate-700'}`}>
+                                <td className={`sticky-c1 p-2 text-center font-bold border-r border-slate-200 w-[44px] ${mStat.hasAny ? 'bg-teal-100 text-teal-900' : 'bg-slate-100 text-slate-700'}`}>
                                   {modIdx + 1}
                                 </td>
                                 
                                 <td 
                                   onClick={() => setCollapsedModules(prev => ({ ...prev, [mod.id]: !prev[mod.id] }))}
-                                  className={`col-modul sticky-c2 px-2.5 py-2 border-r border-slate-200 cursor-pointer hover:opacity-80 transition ${mStat.hasAny ? 'bg-teal-100 text-teal-950 border-l-4 border-l-teal-600' : 'bg-slate-100 text-slate-800'}`}
+                                  className={`sticky-c2 px-2.5 py-2 border-r border-slate-200 cursor-pointer hover:opacity-80 transition w-[280px] ${mStat.hasAny ? 'bg-teal-100 text-teal-950 border-l-4 border-l-teal-600' : 'bg-slate-100 text-slate-800'}`}
                                 >
                                   <div className="flex items-center justify-between gap-1.5">
                                     <div className="flex items-center gap-1.5 leading-snug truncate">
@@ -745,30 +881,24 @@
                                       </span>
                                       <span className="text-xs font-bold truncate" title={mod.title}>{mod.title}</span>
                                       
-                                      {/* LENCANA % COVERAGE MODUL DI SEBELAH MODUL (SAMA MACAM CU) */}
-                                      {mStat.hasAny ? (
-                                        <span className="ml-1 text-[9px] bg-teal-200/90 text-teal-900 font-mono px-1.5 py-0.5 rounded font-bold shrink-0 border border-teal-400/40">
-                                          {mStat.countMet} WA ({mStat.pct}%)
-                                        </span>
-                                      ) : (
-                                        <span className="ml-1 text-[9px] bg-slate-200 text-slate-500 font-mono px-1.5 py-0.5 rounded shrink-0">
-                                          0%
-                                        </span>
-                                      )}
+                                      {/* LENCANA % COVERAGE MENGIKUT BILANGAN SUBMODUL */}
+                                      <span className={`ml-1 text-[9px] font-mono px-1.5 py-0.5 rounded font-bold shrink-0 border ${mStat.pct === 100 ? 'bg-emerald-200 text-emerald-900 border-emerald-400' : mStat.hasAny ? 'bg-teal-200/90 text-teal-900 border-teal-400/50' : 'bg-slate-200 text-slate-500 border-slate-300'}`}>
+                                        {mStat.coveredSubs}/{mStat.totalSub} Sub ({mStat.pct}%)
+                                      </span>
                                     </div>
                                     <span className="text-slate-400 text-xs shrink-0">{isModCollapsed ? '▶' : '▼'}</span>
                                   </div>
                                 </td>
 
-                                <td className={`col-action sticky-c3 p-1 text-center border-r border-slate-200 text-[10px] font-mono ${mStat.hasAny ? 'bg-teal-100 text-teal-800 font-bold' : 'bg-slate-100 text-slate-500'}`}>
+                                <td className={`sticky-c3 p-1 text-center border-r border-slate-200 text-[10px] font-mono w-[44px] ${mStat.hasAny ? 'bg-teal-100 text-teal-800 font-bold' : 'bg-slate-100 text-slate-500'}`}>
                                   {mod.subModules.length}
                                 </td>
 
-                                {currentNoss.cus.map(cu => {
+                                {currentNoss.cus && currentNoss.cus.map(cu => {
                                   const isCollapsed = collapsedCUs[cu.id];
-                                  if (isCollapsed) return <td key={cu.id} className={`col-wa-collapsed p-1 border-r border-slate-200 ${mStat.hasAny ? 'bg-teal-50' : 'bg-slate-100'}`}></td>;
+                                  if (isCollapsed) return <td key={cu.id} className={`p-1 border-r border-slate-200 ${mStat.hasAny ? 'bg-teal-50' : 'bg-slate-100'}`}></td>;
                                   return cu.was.map(wa => (
-                                    <td key={wa.id} className={`col-wa p-1 border-r border-slate-200 ${mStat.hasAny ? 'bg-teal-50/50' : 'bg-slate-100/60'}`}></td>
+                                    <td key={wa.id} className={`p-1 border-r border-slate-200 ${mStat.hasAny ? 'bg-teal-50/50' : 'bg-slate-100/60'}`}></td>
                                   ));
                                 })}
                               </tr>
@@ -783,11 +913,11 @@
                                     key={sm.subId} 
                                     className={`hover:bg-slate-50 transition border-b border-slate-100 ${hasAnyMatch ? 'bg-teal-50/70' : ''}`}
                                   >
-                                    <td className="col-no sticky-c1 bg-white p-2 text-center text-slate-400 border-r border-slate-200 font-mono text-[10px]">
+                                    <td className="sticky-c1 bg-white p-2 text-center text-slate-400 border-r border-slate-200 font-mono text-[10px] w-[44px]">
                                       {modIdx + 1}.{smIdx + 1}
                                     </td>
 
-                                    <td className={`col-modul sticky-c2 px-3 py-1.5 border-r border-slate-200 ${hasAnyMatch ? 'bg-teal-50/80 border-l-4 border-l-teal-600 font-semibold text-teal-950' : 'bg-white text-slate-800'}`}>
+                                    <td className={`sticky-c2 px-3 py-1.5 border-r border-slate-200 w-[280px] ${hasAnyMatch ? 'bg-teal-50/80 border-l-4 border-l-teal-600 font-semibold text-teal-950' : 'bg-white text-slate-800'}`}>
                                       <div className="flex items-center justify-between gap-1">
                                         <div className="text-[11px] leading-tight truncate" title={sm.name}>{sm.name}</div>
                                         {hasAnyMatch && (
@@ -799,7 +929,7 @@
                                       <div className="text-[9px] text-slate-400 font-mono">{sm.code}</div>
                                     </td>
 
-                                    <td className="col-action sticky-c3 bg-white p-1 text-center border-r border-slate-200">
+                                    <td className="sticky-c3 bg-white p-1 text-center border-r border-slate-200 w-[44px]">
                                       <button 
                                         onClick={() => deleteSubModule(mod.id, sm.subId)}
                                         className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition mx-auto flex items-center justify-center"
@@ -810,12 +940,12 @@
                                     </td>
 
                                     {/* PETAK TICK 'X' */}
-                                    {currentNoss.cus.map(cu => {
+                                    {currentNoss.cus && currentNoss.cus.map(cu => {
                                       const isCollapsed = collapsedCUs[cu.id];
                                       if (isCollapsed) {
                                         const countMet = sm.matchedWAs?.filter(w => w.startsWith(cu.id)).length || 0;
                                         return (
-                                          <td key={cu.id} className="col-wa-collapsed p-1 border-r border-slate-200 text-center bg-slate-50 font-bold text-teal-700 text-xs font-mono">
+                                          <td key={cu.id} className="p-1 border-r border-slate-200 text-center bg-slate-50 font-bold text-teal-700 text-xs font-mono">
                                             {countMet > 0 ? countMet : ""}
                                           </td>
                                         );
@@ -829,7 +959,7 @@
                                           <td 
                                             key={gId} 
                                             onClick={() => toggleMatch(sm.subId, gId)}
-                                            className={`col-wa border-r border-slate-200 text-center cursor-pointer select-none transition p-0 h-9 ${isTicked ? 'bg-teal-700 text-white font-black hover:bg-teal-800' : 'hover:bg-indigo-50/60'}`}
+                                            className={`border-r border-slate-200 text-center cursor-pointer select-none transition p-0 h-9 ${isTicked ? 'bg-teal-700 text-white font-black hover:bg-teal-800' : 'hover:bg-indigo-50/60'}`}
                                             title={`Klik untuk padankan ${sm.name} dengan ${cu.id}-${wa.id}`}
                                           >
                                             {isTicked && <span className="text-xs">X</span>}
@@ -845,18 +975,18 @@
                         })}
                       </tbody>
 
-                      {/* STATISTIK BAWAH: DISEMBUYIKAN PADA SKRIN (no-print) SEPERTI DIMINTA KERANA ATAS DAH ADA, KEKAL PADA VERSI CETAK! */}
+                      {/* STATISTIK BAWAH CETAKAN */}
                       <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 print-table">
                         <tr className="print-table">
-                          <td colSpan="3" className="col-modul sticky-c1 bg-slate-100 p-2 text-right border-r border-slate-200 text-[11px] uppercase text-slate-700">
+                          <td colSpan="3" className="sticky-c1 bg-slate-100 p-2 text-right border-r border-slate-200 text-[11px] uppercase text-slate-700">
                             Bilangan WA Dipenuhi (%)
                           </td>
-                          {currentNoss.cus.map(cu => {
+                          {currentNoss.cus && currentNoss.cus.map(cu => {
                             const isCollapsed = collapsedCUs[cu.id];
-                            const st = cuStats[cu.id];
+                            const st = cuStats[cu.id] || { metWA: 0, totalWA: 0, pct: 0 };
                             if (isCollapsed) {
                               return (
-                                <td key={cu.id} className="col-wa-collapsed p-1 border-r border-slate-200 text-center font-mono text-teal-800 text-[11px]">
+                                <td key={cu.id} className="p-1 border-r border-slate-200 text-center font-mono text-teal-800 text-[11px]">
                                   {st.pct}%
                                 </td>
                               );
@@ -893,7 +1023,7 @@
                       )}
                     </div>
                     <div className="text-slate-400 text-[11px] font-mono">
-                      Purata Liputan: {Math.round(Object.values(cuStats).reduce((acc, c) => acc + c.pct, 0) / currentNoss.cus.length)}%
+                      Purata Liputan: {currentNoss.cus ? Math.round(Object.values(cuStats).reduce((acc, c) => acc + c.pct, 0) / currentNoss.cus.length) : 0}%
                     </div>
                   </div>
                 </div>
@@ -902,7 +1032,7 @@
             )}
 
             {/* ========================================================
-                TAB 2: PADANAN KANDUNGAN (JPK 03 & JPK 04-A DENGAN CIRI PINDA LANGSUNG)
+                TAB 2: PADANAN KANDUNGAN (TIDAK AKAN KOSONG / TIADA NaN)
             ======================================================== */}
             {activeTab === 'tab2' && (
               <div className="space-y-4">
@@ -932,7 +1062,7 @@
                   </div>
                 </div>
 
-                {/* JADUAL RINGKASAN JPK 04-A (PERKATAAN TEORI DITUKAR SEPENUHNYA) */}
+                {/* JADUAL RINGKASAN JPK 04-A */}
                 <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                   <div className="bg-slate-800 text-white px-3 py-2 flex items-center justify-between no-print">
                     <h2 className="font-bold text-xs uppercase tracking-wide flex items-center gap-2">
@@ -962,10 +1092,11 @@
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
-                        {currentNoss.cus.map(cu => {
-                          const st = cuStats[cu.id];
-                          const nossRkH = cu.was.reduce((a, b) => a + b.rkHours, 0);
-                          const nossRsH = cu.was.reduce((a, b) => a + b.rsHours, 0);
+                        {currentNoss.cus && currentNoss.cus.map(cu => {
+                          const st = cuStats[cu.id] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
+                          // Pastikan tiada NaN
+                          const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
+                          const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
                           
                           let agensiRkH = 0;
                           let agensiRsH = 0;
@@ -1021,7 +1152,7 @@
                   </div>
                 </div>
 
-                {/* BORANG COCU JPK 03: BUTIRAN BOLEH DIPINDA + STATUS MEMENUHI INTERAKTIF */}
+                {/* BORANG COCU JPK 03 */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between no-print">
                     <span className="text-xs text-slate-500 font-medium">
@@ -1029,8 +1160,8 @@
                     </span>
                   </div>
 
-                  {currentNoss.cus.map(cu => {
-                    const st = cuStats[cu.id];
+                  {currentNoss.cus && currentNoss.cus.map(cu => {
+                    const st = cuStats[cu.id] || { metWA: 0, totalWA: 0, pct: 0 };
                     return (
                       <div key={cu.id} className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                         
@@ -1055,12 +1186,10 @@
                                   KURIKULUM PROGRAM AGENSI
                                 </th>
                                 
-                                {/* UI Skrin: 1 Kolum Sahaja (MEMENUHI) */}
                                 <th className="p-1.5 border-r border-slate-300 text-center bg-slate-200 w-24 no-print">
                                   MEMENUHI
                                 </th>
 
-                                {/* Print Mode: 2 Kolum (Ya / Tidak) */}
                                 <th colSpan="2" className="p-1.5 border-r border-slate-300 text-center bg-slate-200 w-20 print-show-col">
                                   MEMENUHI
                                 </th>
@@ -1079,10 +1208,8 @@
                                 <th className="p-1 border-r border-slate-300 min-w-[140px]">Applied Skills</th>
                                 <th className="p-1 border-r border-slate-300 w-12 text-center">Jam</th>
 
-                                {/* UI Subheader */}
                                 <th className="p-1 border-r border-slate-300 text-center w-24 no-print">Status (Klik Togol)</th>
 
-                                {/* Print Subheaders (Ya / Tidak) */}
                                 <th className="p-1 border-r border-slate-300 text-center w-10 print-show-col">Ya</th>
                                 <th className="p-1 border-r border-slate-300 text-center w-10 print-show-col">Tidak</th>
                               </tr>
@@ -1102,18 +1229,15 @@
 
                                 const rowSpanCount = Math.max(1, matchingSubs.length);
                                 const defaultFulfilled = matchingSubs.length > 0;
-                                // Semak sama ada pengguna telah manual override status ini
                                 const isFulfilled = manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultFulfilled;
 
                                 return (
                                   <React.Fragment key={wa.id}>
                                     <tr>
-                                      {/* Kolum WA NOSS */}
                                       <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-center font-bold text-indigo-700 bg-slate-50 align-top">
                                         <div className="font-mono text-xs">{wa.id}</div>
                                         <div className="text-[10px] text-slate-500 font-normal leading-tight mt-0.5">{wa.title}</div>
                                         
-                                        {/* KOTAK NOTA SUBMODUL BERKAITAN JIKA > 1 */}
                                         {matchingSubs.length > 1 && (
                                           <div 
                                             className="mt-1.5 inline-block bg-teal-50 border border-teal-300 text-teal-800 text-[9px] px-1.5 py-0.5 rounded font-bold shadow-xs"
@@ -1134,7 +1258,7 @@
                                         <div className="text-[10px] text-slate-500 font-mono mt-0.5">{wa.rsHours} Jam</div>
                                       </td>
 
-                                      {/* Sub-baris Agensi 1 (INPUT BOLEH DIPINDA SECARA LANGSUNG) */}
+                                      {/* Sub-baris Agensi 1 */}
                                       {matchingSubs.length > 0 ? (
                                         <>
                                           <td className="p-1.5 border-r border-slate-200 align-top">
@@ -1204,7 +1328,7 @@
                                         {!isFulfilled ? "Tidak" : ""}
                                       </td>
 
-                                      {/* Catatan Jurang (Boleh Dipinda / Disunting Langsung) */}
+                                      {/* Catatan Jurang */}
                                       <td rowSpan={rowSpanCount} className="p-1 text-slate-600 text-[10px] align-middle">
                                         <textarea
                                           value={gapRemarks[gId] !== undefined ? gapRemarks[gId] : (isFulfilled ? "Memenuhi standard minimum." : "Kandungan tiada dalam modul agensi.")}
@@ -1216,7 +1340,7 @@
                                       </td>
                                     </tr>
 
-                                    {/* Multi-Module Matching Rows (Boleh Dipinda) */}
+                                    {/* Multi-Module Matching Rows */}
                                     {matchingSubs.slice(1).map((item, sIdx) => (
                                       <tr key={sIdx} className="bg-slate-50/30">
                                         <td className="p-1.5 border-r border-slate-200 align-top">

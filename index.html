@@ -11,8 +11,6 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <!-- Babel for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Google Identity Services (OAuth / Sign-In) -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- SheetJS (xlsx) for Excel processing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
@@ -92,16 +90,16 @@
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
   
-    /* Teleprompter Marquee Animation */
+    /* Teleprompter Marquee Animation - Terus nampak & meluncur lancar */
     @keyframes teleprompterScroll {
-      0% { transform: translateX(100%); }
+      0% { transform: translateX(350px); }
       100% { transform: translateX(-100%); }
     }
     .teleprompter-track {
       display: inline-block;
       white-space: nowrap;
-      padding-left: 20px;
-      animation: teleprompterScroll 32s linear infinite;
+      will-change: transform;
+      animation: teleprompterScroll 28s linear infinite;
     }
     .teleprompter-track:hover {
       animation-play-state: paused;
@@ -270,6 +268,14 @@
         try { return JSON.parse(localStorage.getItem("noss_do_profile") || "null"); } catch (e) { return null; }
       });
       const [dailyAutoPasskey, setDailyAutoPasskey] = useState(() => localStorage.getItem("noss_daily_passkey") || "");
+      const [doSessions, setDoSessions] = useState(() => {
+        try { return JSON.parse(localStorage.getItem("noss_do_sessions") || "[]"); } catch (e) { return []; }
+      });
+      const [activeSessionId, setActiveSessionId] = useState(() => localStorage.getItem("noss_active_session_id") || "DEFAULT");
+      const [activeSessionLabel, setActiveSessionLabel] = useState(() => localStorage.getItem("noss_active_session_label") || "");
+      const [sessionExpiresAt, setSessionExpiresAt] = useState(() => Number(localStorage.getItem("noss_session_expires_at") || 0));
+      const [newSessionLabel, setNewSessionLabel] = useState("");
+      const [sessionBusy, setSessionBusy] = useState(false);
       const [showPasskeyModal, setShowPasskeyModal] = useState(false);
       const [authTabMode, setAuthTabMode] = useState("DO"); // "DO" | "PEMBANTU"
       const [inputPasskey, setInputPasskey] = useState("");
@@ -278,28 +284,15 @@
       const [copiedPasskey, setCopiedPasskey] = useState(false);
 
       
-      // Helper: Baca payload JWT Google Credential
-      const parseJwt = (token) => {
-        try {
-          const base64Url = token.split('.')[1];
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-          }).join(''));
-          return JSON.parse(jsonPayload);
-        } catch (e) {
-          return null;
-        }
-      };
-
-      // FUNGSI SIMPAN PEMETAAN KE CLOUD GOOGLE SHEETS ('KOLABORASI')
+      // FUNGSI SIMPAN PEMETAAN KE CLOUD GOOGLE SHEETS ('KOLABORASI' MENGIKUT SESI)
       const handleSaveToCloud = async (isSilent = false) => {
         setIsCloudSaving(true);
         if (!isSilent) setCloudStatusMsg("Menyimpan ke Cloud...");
         try {
           const payload = {
             action: 'saveCollaborativeData',
-            editorName: userRole === 'DO' ? (doProfile?.name || 'Pegawai DO') : 'Pembantu Kolaborasi',
+            sessionId: activeSessionId || 'DEFAULT',
+            editorName: userRole === 'DO' ? (doProfile?.name || 'Pegawai DO') : `Pembantu (${activeSessionLabel || 'Kolaborasi'})`,
             data: {
               selectedNossCodes,
               modules,
@@ -320,7 +313,6 @@
             setLastSyncTime(resJson.lastUpdated);
             setLastSyncUser(resJson.updatedBy);
             setCloudStatusMsg("Disimpan ke Cloud");
-            if (!isSilent) alert("Data pemetaan (modul, tanda petak, jam & ulasan) berjaya disimpan ke awan Google Sheets! Semua kolaborator kini boleh melihat kemas kini ini.");
           } else {
             setCloudStatusMsg("Gagal simpan");
           }
@@ -334,11 +326,12 @@
       };
 
       // FUNGSI TARIK DATA PEMETAAN TERKINI DARI CLOUD GOOGLE SHEETS
-      const handlePullFromCloud = async (isSilent = false) => {
+      const handlePullFromCloud = async (isSilent = false, overrideSessionId = null) => {
         setIsCloudLoading(true);
         if (!isSilent) setCloudStatusMsg("Menarik data terkini...");
+        const targetSess = overrideSessionId || activeSessionId || 'DEFAULT';
         try {
-          const res = await fetch(`${DEFAULT_GAS_URL}?action=getCollaborativeData`);
+          const res = await fetch(`${DEFAULT_GAS_URL}?action=getCollaborativeData&sessionId=${encodeURIComponent(targetSess)}`);
           const json = await res.json();
           if (json && json.success && json.data) {
             const d = json.data;
@@ -352,14 +345,10 @@
             if (json.lastUpdated) setLastSyncTime(json.lastUpdated);
             if (json.updatedBy) setLastSyncUser(json.updatedBy);
             setCloudStatusMsg("Data terkini dimuatkan");
-            if (!isSilent) alert(`Berjaya menarik data pemetaan terkini (dikemas kini oleh ${json.updatedBy} pada ${json.lastUpdated})!`);
             return true;
-          } else {
-            if (!isSilent) alert("Tiada rekod pemetaan awan ditemui dalam Tab KOLABORASI lagi. Sila klik 'Simpan ke Cloud' untuk mula menyimpan draf pertama.");
           }
         } catch (e) {
           console.warn("Gagal menarik data kolaborasi:", e);
-          if (!isSilent) alert("Gagal menghubungi pangkalan data awan. Sila semak sambungan internet anda.");
         } finally {
           setIsCloudLoading(false);
           setTimeout(() => setCloudStatusMsg(""), 4000);
@@ -367,114 +356,121 @@
         return false;
       };
 
-
-
-      // FUNGSI LOG MASUK RASMI GOOGLE (PENGESAHAN IDENTITI TULEN - TIADA TAIP MANUAL)
+      // LOG MASUK GOOGLE RASMI MELALUI POPUP GOOGLE APPS SCRIPT (TIADA ERROR 401)
       const handleGoogleSignInClick = () => {
         setAuthLoading(true);
         setPasskeyError("");
 
-        if (window.google && window.google.accounts && window.google.accounts.id) {
-          try {
-            window.google.accounts.id.initialize({
-              client_id: "704874499092-auth.apps.googleusercontent.com",
-              callback: handleGoogleCredentialResponse,
-              auto_select: false,
-              cancel_on_tap_outside: false
-            });
-            window.google.accounts.id.prompt((notification) => {
-              if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                triggerGoogleTokenClient();
-              }
-            });
-          } catch (e) {
-            triggerGoogleTokenClient();
-          }
-        } else {
-          triggerGoogleTokenClient();
-        }
-      };
+        const width = 460;
+        const height = 540;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        const popupUrl = `${DEFAULT_GAS_URL}?action=googleLoginPopup&origin=${encodeURIComponent(window.location.origin)}`;
 
-      const triggerGoogleTokenClient = () => {
-        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-          try {
-            const client = window.google.accounts.oauth2.initTokenClient({
-              client_id: "704874499092-auth.apps.googleusercontent.com",
-              scope: "email profile openid",
-              callback: async (tokenResponse) => {
-                if (tokenResponse && tokenResponse.access_token) {
-                  try {
-                    const uRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-                      headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-                    });
-                    const uInfo = await uRes.json();
-                    if (uInfo && uInfo.email) {
-                      await verifyEmailWithTabDO(uInfo.email, uInfo.name, uInfo.picture);
-                    } else {
-                      setPasskeyError("Gagal mendapatkan emel daripada akaun Google anda.");
-                      setAuthLoading(false);
-                    }
-                  } catch (err) {
-                    setPasskeyError("Ralat semasa membaca profil Google: " + err.message);
-                    setAuthLoading(false);
-                  }
-                } else {
-                  setPasskeyError("Log masuk Google dibatalkan atau tidak selesai.");
-                  setAuthLoading(false);
-                }
+        const popup = window.open(
+          popupUrl,
+          "GoogleDOAuthPopup",
+          `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+        );
+
+        if (!popup || popup.closed || typeof popup.closed === "undefined") {
+          setAuthLoading(false);
+          setPasskeyError("Tetingkap pop-up disekat oleh pelayar anda. Sila benarkan pop-up (Allow Pop-ups) untuk laman ini dan cuba lagi.");
+          return;
+        }
+
+        const handleAuthMessage = (event) => {
+          if (event.data && event.data.type === "GAS_DO_AUTH_RESULT") {
+            window.removeEventListener("message", handleAuthMessage);
+            clearInterval(pollTimer);
+            setAuthLoading(false);
+
+            const result = event.data.payload;
+            if (result && result.valid) {
+              setUserRole("DO");
+              const profile = { name: result.name, unit: result.unit, email: result.email };
+              setDoProfile(profile);
+              const sessionsList = result.sessions || [];
+              setDoSessions(sessionsList);
+              localStorage.setItem("noss_user_role", "DO");
+              localStorage.setItem("noss_do_profile", JSON.stringify(profile));
+              localStorage.setItem("noss_do_sessions", JSON.stringify(sessionsList));
+
+              if (sessionsList.length > 0) {
+                const first = sessionsList[0];
+                setActiveSessionId(first.sessionId);
+                setActiveSessionLabel(first.label);
+                setDailyAutoPasskey(first.passkey);
+                localStorage.setItem("noss_active_session_id", first.sessionId);
+                localStorage.setItem("noss_active_session_label", first.label);
+                localStorage.setItem("noss_daily_passkey", first.passkey);
               }
-            });
-            client.requestAccessToken();
-          } catch (err) {
-            setPasskeyError("Ralat memulakan tetingkap log masuk Google: " + err.message);
+            } else {
+              setPasskeyError((result && result.message) || "Akaun Google anda tidak tersenarai atau tidak aktif dalam Tab DO.");
+            }
+          }
+        };
+
+        window.addEventListener("message", handleAuthMessage);
+
+        // Pantau jika pengguna menutup popup secara manual sebelum selesai
+        const pollTimer = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(pollTimer);
+            window.removeEventListener("message", handleAuthMessage);
             setAuthLoading(false);
           }
-        } else {
-          setPasskeyError("Pustaka Google Sign-In sedang dimuatkan. Sila pastikan sambungan internet aktif dan cuba sebentar lagi.");
-          setAuthLoading(false);
-        }
+        }, 600);
       };
 
-      const verifyEmailWithTabDO = async (email, gName, gPicture) => {
+      // URUS 5 SLOT SESI KOLABORASI DO (JANA / TUKAR / BATALKAN SESI 6 JAM)
+      const handleManageDOSession = async (op, slotNum) => {
+        if (!doProfile?.email) return;
+        setSessionBusy(true);
         try {
-          const cleanEmail = email.trim().toLowerCase();
-          const url = `${DEFAULT_GAS_URL}?action=verifyDO&email=${encodeURIComponent(cleanEmail)}`;
+          const progs = selectedNossCodes.join(",");
+          const lbl = newSessionLabel.trim() || `Sesi Bengkel #${slotNum}`;
+          const url = `${DEFAULT_GAS_URL}?action=manageSessions&email=${encodeURIComponent(doProfile.email)}&op=${op}&slot=${slotNum}&label=${encodeURIComponent(lbl)}&programs=${encodeURIComponent(progs)}`;
           const res = await fetch(url);
           const data = await res.json();
-          if (data && data.valid) {
-            setUserRole("DO");
-            const profile = { name: data.name || gName || cleanEmail, unit: data.unit, email: cleanEmail, picture: gPicture };
-            setDoProfile(profile);
-            setDailyAutoPasskey(data.autoPasskey || "");
-            localStorage.setItem("noss_user_role", "DO");
-            localStorage.setItem("noss_do_profile", JSON.stringify(profile));
-            if (data.autoPasskey) localStorage.setItem("noss_daily_passkey", data.autoPasskey);
-            setShowPasskeyModal(false);
+          if (data && data.success) {
+            const list = data.sessions || [];
+            setDoSessions(list);
+            localStorage.setItem("noss_do_sessions", JSON.stringify(list));
+            if (op === 'create') {
+              setNewSessionLabel("");
+              const created = list.find(s => Number(s.slot) === Number(slotNum));
+              if (created) {
+                setActiveSessionId(created.sessionId);
+                setActiveSessionLabel(created.label);
+                setDailyAutoPasskey(created.passkey);
+                localStorage.setItem("noss_active_session_id", created.sessionId);
+                localStorage.setItem("noss_active_session_label", created.label);
+                localStorage.setItem("noss_daily_passkey", created.passkey);
+              }
+            }
           } else {
-            setPasskeyError(data.message || `Akaun Google anda (${cleanEmail}) tidak tersenarai sebagai Pegawai DO yang aktif dalam Tab DO.`);
+            alert((data && data.message) || "Gagal mengemas kini sesi kolaborasi.");
           }
         } catch (err) {
-          setPasskeyError("Ralat menghubungi pelayan pengesahan DO: " + err.message);
+          alert("Ralat sambungan semasa mengurus sesi: " + err.message);
         } finally {
-          setAuthLoading(false);
+          setSessionBusy(false);
         }
       };
 
-      const handleGoogleCredentialResponse = async (response) => {
-        setAuthLoading(true);
-        setPasskeyError("");
-        try {
-          const payload = parseJwt(response.credential);
-          if (payload && payload.email) {
-            await verifyEmailWithTabDO(payload.email, payload.name, payload.picture);
-          } else {
-            setPasskeyError("Gagal membaca token akaun Google.");
-            setAuthLoading(false);
-          }
-        } catch (err) {
-          setPasskeyError("Ralat semasa pengesahan akaun Google: " + err.message);
-          setAuthLoading(false);
+      const handleSelectActiveSession = async (sess) => {
+        setActiveSessionId(sess.sessionId);
+        setActiveSessionLabel(sess.label);
+        setDailyAutoPasskey(sess.passkey);
+        localStorage.setItem("noss_active_session_id", sess.sessionId);
+        localStorage.setItem("noss_active_session_label", sess.label);
+        localStorage.setItem("noss_daily_passkey", sess.passkey);
+        if (sess.programs) {
+          const codes = sess.programs.split(",").filter(c => nossDatabase[c]);
+          if (codes.length > 0) setSelectedNossCodes(codes);
         }
+        await handlePullFromCloud(false, sess.sessionId);
       };
 
       const handleVerifyCollaboratorPasskey = async (e) => {
@@ -491,12 +487,30 @@
           if (data && data.valid) {
             setUserRole("PEMBANTU");
             setDoProfile(null);
+            const sessId = data.sessionId || "DEFAULT";
+            const sessLabel = data.label || `Sesi #${data.slot || 1}`;
+            const expAt = Number(data.expiresAt) || 0;
+
+            setActiveSessionId(sessId);
+            setActiveSessionLabel(sessLabel);
+            setSessionExpiresAt(expAt);
+
             localStorage.setItem("noss_user_role", "PEMBANTU");
+            localStorage.setItem("noss_active_session_id", sessId);
+            localStorage.setItem("noss_active_session_label", sessLabel);
+            localStorage.setItem("noss_session_expires_at", String(expAt));
             localStorage.removeItem("noss_do_profile");
+
+            if (data.programs && data.programs.length > 0) {
+              const validProgs = data.programs.filter(c => nossDatabase[c]);
+              if (validProgs.length > 0) setSelectedNossCodes(validProgs);
+            }
+
+            await handlePullFromCloud(true, sessId);
             setShowPasskeyModal(false);
             setInputPasskey("");
           } else {
-            setPasskeyError((data && data.message) || "Passkey kolaborasi tidak sah.");
+            setPasskeyError((data && data.message) || "Passkey kolaborasi tidak sah atau tempoh 6 jam telah tamat.");
           }
         } catch (err) {
           setPasskeyError("Gagal menyemak passkey kolaborasi. Sila semak sambungan internet.");
@@ -505,10 +519,11 @@
         }
       };
 
-      const handleCopyPasskey = () => {
-        if (!dailyAutoPasskey) return;
-        navigator.clipboard.writeText(dailyAutoPasskey);
-        setCopiedPasskey(true);
+      const handleCopyPasskey = (textToCopy) => {
+        const val = textToCopy || dailyAutoPasskey;
+        if (!val) return;
+        navigator.clipboard.writeText(val);
+        setCopiedPasskey(val);
         setTimeout(() => setCopiedPasskey(false), 2000);
       };
 
@@ -516,9 +531,13 @@
         setUserRole("GUEST");
         setDoProfile(null);
         setDailyAutoPasskey("");
+        setDoSessions([]);
+        setSessionExpiresAt(0);
         localStorage.removeItem("noss_user_role");
         localStorage.removeItem("noss_do_profile");
         localStorage.removeItem("noss_daily_passkey");
+        localStorage.removeItem("noss_do_sessions");
+        localStorage.removeItem("noss_session_expires_at");
         setShowPasskeyModal(false);
       };
       const [showAddModuleModal, setShowAddModuleModal] = useState(false);
@@ -623,6 +642,21 @@
 
         return () => clearInterval(syncInterval);
       }, [isCloudSaving, userRole]);
+
+      
+      // 4. SEMAK TAMAT TEMPOH SESI KOLABORASI 6 JAM SECARA AUTOMATIK
+      useEffect(() => {
+        if (userRole !== "PEMBANTU" || !sessionExpiresAt) return;
+        const checkExpiry = () => {
+          if (Date.now() > sessionExpiresAt) {
+            alert("Tempoh sah 6 jam bagi sesi kolaborasi ini telah tamat. Sila dapatkan Passkey baharu daripada Pegawai DO.");
+            handleLogoutAccess();
+          }
+        };
+        checkExpiry();
+        const timer = setInterval(checkExpiry, 30000);
+        return () => clearInterval(timer);
+      }, [userRole, sessionExpiresAt]);
 
       // 3. AMARAN JIKA PENGGUNA CUBA TUTUP/REFRESH TAB KETIKA SEDANG SIMPAN
       useEffect(() => {
@@ -954,20 +988,161 @@
                     
                     {/* Program Utama / Pertama: Dikunci untuk Kolaborator / Pembantu, Hanya DO Boleh Tukar */}
                     {userRole === "DO" ? (
-                      <select
-                        value={selectedNossCodes[0] || ""}
-                        onChange={(e) => handlePrimaryProgramChange(e.target.value)}
-                        className="bg-slate-900 text-slate-100 font-mono text-xs rounded border border-indigo-500/50 focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer max-w-[230px] truncate"
-                        title="Akses DO: Pilih atau tukar program NOSS utama"
+                  <div className="space-y-3 text-xs max-h-[78vh] overflow-y-auto custom-scrollbar pr-1">
+                    <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-amber-900">👑 {doProfile?.name}</span>
+                          <span className="text-[9px] bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded font-bold">DO Aktif</span>
+                        </div>
+                        <p className="text-[10px] text-slate-600">{doProfile?.unit} ({doProfile?.email})</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleLogoutAccess}
+                        className="text-[11px] text-rose-600 hover:underline font-bold shrink-0"
                       >
-                        <option value="">-- Pilih Program NOSS --</option>
-                        {Object.keys(nossDatabase).map(k => (
-                          <option key={k} value={k}>
-                            {k} ({nossDatabase[k].title ? nossDatabase[k].title.substring(0, 16) + '...' : ''} T{cleanTahapNumber(nossDatabase[k].tahap)})
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
+                        Log Keluar
+                      </button>
+                    </div>
+
+                    {/* PENGURUSAN 5 SLOT SESI KOLABORASI (HAD MASA 6 JAM SETIAP SESI) */}
+                    <div className="p-3 bg-slate-900 text-white rounded-lg space-y-2.5 border border-slate-700">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                        <span className="text-[11px] text-amber-300 font-bold">👥 Pengurusan Sesi Kolaborasi (Maksimum 5 Sesi)</span>
+                        <span className="text-[10px] bg-emerald-900/80 text-emerald-300 border border-emerald-600/40 px-1.5 py-0.5 rounded font-mono">
+                          Had: 6 Jam / Sesi
+                        </span>
+                      </div>
+
+                      {/* Input nama label sesi baharu */}
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={newSessionLabel}
+                          onChange={(e) => setNewSessionLabel(e.target.value)}
+                          placeholder="Label sesi (cth: Kumpulan Bengkel A)..."
+                          className="flex-1 bg-slate-800 border border-slate-700 text-slate-100 rounded px-2 py-1 text-[11px] focus:ring-1 focus:ring-indigo-400"
+                        />
+                      </div>
+
+                      {/* 5 Slot Sesi */}
+                      <div className="space-y-1.5">
+                        {[1, 2, 3, 4, 5].map(slotNum => {
+                          const existing = doSessions.find(s => Number(s.slot) === slotNum);
+                          const isCurrent = existing && activeSessionId === existing.sessionId;
+                          const minsLeft = existing ? Math.max(0, Math.round((existing.expiresAt - Date.now()) / 60000)) : 0;
+                          const hrsLeft = Math.floor(minsLeft / 60);
+                          const remMins = minsLeft % 60;
+
+                          return (
+                            <div
+                              key={slotNum}
+                              className={`p-2 rounded border text-[11px] transition ${
+                                isCurrent
+                                  ? 'bg-indigo-950/90 border-indigo-400'
+                                  : existing
+                                  ? 'bg-slate-800/90 border-slate-700'
+                                  : 'bg-slate-800/40 border-slate-800 border-dashed'
+                              }`}
+                            >
+                              {existing ? (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span className="bg-amber-400 text-slate-950 font-bold px-1.5 py-0.2 rounded text-[10px]">
+                                        #{slotNum}
+                                      </span>
+                                      <span className="font-bold text-slate-100 truncate">{existing.label}</span>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-emerald-400 shrink-0">
+                                      ⏳ {hrsLeft}j {remMins}m
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center justify-between gap-1.5 bg-slate-950 px-2 py-1 rounded">
+                                    <span className="font-mono font-bold text-amber-300 tracking-wider text-xs select-all">
+                                      {existing.passkey}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyPasskey(existing.passkey)}
+                                        className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-0.5 rounded text-[10px]"
+                                        title="Salin kod passkey"
+                                      >
+                                        {copiedPasskey === existing.passkey ? "✓ Disalin" : "Salin Kod"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const baseUrl = window.location.origin + window.location.pathname;
+                                          const progs = existing.programs || selectedNossCodes.join(",");
+                                          const shareUrl = `${baseUrl}?noss=${encodeURIComponent(progs)}&passkey=${encodeURIComponent(existing.passkey)}`;
+                                          navigator.clipboard.writeText(shareUrl);
+                                          alert(`Pautan Sesi #${slotNum} (${existing.label}) disalin! Sah untuk 6 jam.`);
+                                        }}
+                                        className="bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded text-[10px] font-semibold"
+                                        title="Salin pautan terus untuk kolaborator"
+                                      >
+                                        Salin Link
+                                      </button>
+                                      {!isCurrent && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSelectActiveSession(existing)}
+                                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded text-[10px]"
+                                          title="Buka ruang kerja sesi ini"
+                                        >
+                                          Buka
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        disabled={sessionBusy}
+                                        onClick={() => handleManageDOSession('revoke', slotNum)}
+                                        className="text-rose-400 hover:text-rose-300 px-1 font-bold"
+                                        title="Tamatkan sesi ini sekarang"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between text-slate-400">
+                                  <span>Slot Sesi #{slotNum} (Kosong)</span>
+                                  <button
+                                    type="button"
+                                    disabled={sessionBusy}
+                                    onClick={() => handleManageDOSession('create', slotNum)}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-2.5 py-0.5 rounded text-[10px] transition"
+                                  >
+                                    {sessionBusy ? "..." : "+ Jana Sesi 6 Jam"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
+                        Setiap sesi mempunyai ruang simpanan tersendiri dan akan <strong>tamat tempoh secara automatik selepas 6 jam</strong>.
+                      </p>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowPasskeyModal(false)}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded"
+                      >
+                        Selesai
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                       <div 
                         className="bg-slate-950 text-slate-200 font-mono text-xs px-2 py-0.5 rounded border border-slate-700/80 max-w-[230px] truncate cursor-not-allowed select-none flex items-center gap-1.5"
                         title="Program ditetapkan oleh Pegawai DO (Mod Kolaborasi dikunci)"
@@ -1066,7 +1241,7 @@
                       {userRole === "DO"
                         ? `👑 DO: ${doProfile?.name ? doProfile.name.split(" ").slice(0, 2).join(" ") : "Aktif"}`
                         : userRole === "PEMBANTU"
-                        ? "👥 Pembantu (Kolaborasi)"
+                        ? `👥 ${activeSessionLabel || "Pembantu"} (6j)`
                         : "🔒 Mod Paparan (Klik Akses)"}
                     </span>
                   </button>

@@ -91,6 +91,22 @@
     .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+  
+    /* Teleprompter Marquee Animation */
+    @keyframes teleprompterScroll {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    .teleprompter-track {
+      display: inline-block;
+      white-space: nowrap;
+      padding-left: 20px;
+      animation: teleprompterScroll 32s linear infinite;
+    }
+    .teleprompter-track:hover {
+      animation-play-state: paused;
+    }
+
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col font-sans">
@@ -1274,7 +1290,7 @@
                                     key={`${prog.code}-${gId}`} 
                                     className={`sticky top-0 z-30 border-b border-r border-slate-700 transition align-bottom ${isCovered ? 'bg-teal-900 text-teal-200 font-bold' : 'bg-slate-900 text-slate-300'} p-0 text-center w-[42px] min-w-[42px]`}
                                     title={`${isMultiProgram ? prog.code + ' ' : ''}${cu.id}-${wa.id}: ${wa.title}`}
-                                    onMouseEnter={() => setHoveredWA({ cuId: cu.id, waId: wa.id, title: wa.title, rk: wa.rk, rs: wa.rs, progCode: prog.code })}
+                                    onMouseEnter={() => setHoveredWA({ cuId: cu.id, waId: wa.id, title: wa.title, rk: wa.rk, rs: wa.rs, rkHours: wa.rkHours, rsHours: wa.rsHours, progCode: prog.code })}
                                     onMouseLeave={() => setHoveredWA(null)}
                                   >
                                     {showFullWA ? (
@@ -1503,6 +1519,7 @@
                                               onClick={() => toggleMatch(sm.subId, gId)}
                                               className={`border-r border-slate-200 text-center cursor-pointer select-none transition p-0 h-9 ${isTicked ? 'bg-teal-700 text-white font-black hover:bg-teal-800' : 'hover:bg-indigo-50/60'}`}
                                               title={`Klik untuk padankan ${sm.name} dengan ${cu.id}-${wa.id}`}
+                                              onMouseEnter={() => setHoveredWA({ cuId: cu.id, waId: wa.id, title: wa.title, rk: wa.rk, rs: wa.rs, rkHours: wa.rkHours, rsHours: wa.rsHours, progCode: prog.code, subName: sm.name, subCode: sm.code })}
                                             >
                                               {isTicked && <span className="text-xs">X</span>}
                                             </td>
@@ -1587,22 +1604,74 @@
                     </div>
                   )}
 
-                  {/* BAR STATUS KURSOR LALU */}
-                  <div className="bg-slate-900 text-slate-200 px-3 py-1.5 text-xs flex items-center justify-between border-t border-slate-700">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
-                      {hoveredWA ? (
-                        <span className="truncate">
-                          <strong>{hoveredWA.progCode ? hoveredWA.progCode + ' - ' : ''}{hoveredWA.cuId}-{hoveredWA.waId}:</strong> {hoveredWA.title} 
-                          <span className="text-slate-400 ml-2 font-mono">| Teori: {hoveredWA.rk}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-[11px]">Halakan kursor ke mana-mana petak matriks untuk melihat perincian tugas.</span>
-                      )}
+{/* BAR STATUS KURSOR DUA TINGKAT + TELEPROMPTER MAKLUMAT LENGKAP */}
+                  <div className="bg-slate-950 text-slate-200 px-3 py-2 text-xs border-t border-slate-800 space-y-1.5 shadow-inner">
+                    
+                    {/* TINGKAT 1 (ATAS): KOD PROJEK / NOSS, KOD WA & TAJUK TUGASAN */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-teal-400 animate-pulse shrink-0"></span>
+                        {hoveredWA ? (
+                          <div className="flex items-center flex-wrap gap-1.5 font-medium">
+                            {hoveredWA.progCode && (
+                              <span className="bg-amber-400/20 text-amber-300 font-mono text-[11px] font-bold px-2 py-0.5 rounded border border-amber-400/40 shrink-0">
+                                {hoveredWA.progCode}
+                              </span>
+                            )}
+                            <span className="font-mono font-bold text-teal-300 text-xs">
+                              {hoveredWA.cuId}-{hoveredWA.waId}:
+                            </span>
+                            <span className="text-slate-100 font-bold text-xs">
+                              {hoveredWA.title}
+                            </span>
+                            {hoveredWA.subName && (
+                              <span className="text-[10px] text-indigo-300 bg-indigo-950/80 px-1.5 py-0.5 rounded border border-indigo-700/50">
+                                ↳ Modul: {hoveredWA.subCode} ({hoveredWA.subName})
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">
+                            Halakan kursor ke mana-mana lajur WA atau petak matriks untuk membaca perincian teleprompter.
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-slate-400 text-[10px] font-mono shrink-0 flex items-center gap-2">
+                        <span className="text-slate-500">Program Aktif: {selectedPrograms.length}</span>
+                        {hoveredWA && (
+                          <span className="text-slate-500 hidden md:inline">• Letak kursor pada teks bawah untuk henti gerak</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-slate-400 text-[11px] font-mono">
-                      Program Aktif: {selectedPrograms.length} | Jumlah NOSS Diliputi
+
+                    {/* TINGKAT 2 (BAWAH): TELEPROMPTER MAKLUMAT PERINCIAN (TEORI & AMALI) */}
+                    <div className="flex items-center gap-2 bg-slate-900/90 px-2.5 py-1 rounded-md border border-slate-800 overflow-hidden">
+                      <span className="bg-indigo-600 text-white font-mono text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 flex items-center gap-1 shadow-xs">
+                        <span>📜 TELEPROMPTER</span>
+                      </span>
+
+                      <div className="overflow-hidden relative w-full h-5 flex items-center">
+                        {hoveredWA ? (
+                          <div key={`${hoveredWA.cuId}-${hoveredWA.waId}`} className="teleprompter-track text-slate-300 text-xs cursor-pointer" title="Perincian Penuh (Tuding kursor untuk henti)">
+                            <span className="text-amber-300 font-bold mr-1">📘 PENGETAHUAN TEORI (RK):</span>
+                            <span className="text-slate-200 mr-2">{hoveredWA.rk || "Tiada rekod teori khusus"}</span>
+                            {hoveredWA.rkHours ? <span className="bg-amber-900/40 text-amber-300 border border-amber-600/40 px-1.5 py-0.2 rounded font-mono text-[10px] mr-4 font-bold">⏱️ {hoveredWA.rkHours} Jam</span> : null}
+
+                            <span className="text-teal-400 mx-2">|</span>
+
+                            <span className="text-emerald-300 font-bold mr-1">🛠️ KEMAHIRAN AMALI (RS):</span>
+                            <span className="text-slate-200 mr-2">{hoveredWA.rs || "Tiada rekod amali khusus"}</span>
+                            {hoveredWA.rsHours ? <span className="bg-emerald-900/40 text-emerald-300 border border-emerald-600/40 px-1.5 py-0.2 rounded font-mono text-[10px] font-bold">⏱️ {hoveredWA.rsHours} Jam</span> : null}
+                          </div>
+                        ) : (
+                          <div className="text-slate-500 text-[11px] italic">
+                            Maklumat terperinci (Related Knowledge & Applied Skills) akan ditayangkan di sini secara teleprompter...
+                          </div>
+                        )}
+                      </div>
                     </div>
+
                   </div>
                 </div>
 

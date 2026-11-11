@@ -678,38 +678,38 @@
                           <span>+ Tambah NOSS</span>
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/></svg>
                         </button>
+
+                        {/* Dropdown Senarai Program untuk Ditambah */}
+                        {showAddProgramDropdown && (
+                          <div className="absolute right-0 mt-1.5 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-2 space-y-1">
+                            <div className="text-[10px] text-slate-400 font-semibold px-2 py-1 uppercase border-b border-slate-800">
+                              Pilih Program untuk Ditambah:
+                            </div>
+                            <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                              {Object.keys(nossDatabase)
+                                .filter(code => !selectedNossCodes.includes(code))
+                                .map(code => (
+                                  <button
+                                    key={code}
+                                    onClick={() => handleAddProgram(code)}
+                                    className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-800 text-[11px] text-slate-200 flex flex-col transition"
+                                  >
+                                    <span className="font-mono font-bold text-amber-300">{code}</span>
+                                    <span className="text-[10px] text-slate-400 truncate">{nossDatabase[code].title}</span>
+                                  </button>
+                                ))}
+                              {Object.keys(nossDatabase).filter(code => !selectedNossCodes.includes(code)).length === 0 && (
+                                <div className="text-[11px] text-slate-500 px-2 py-1.5 text-center">Semua program telah dipilih.</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-[10px] text-slate-400 italic px-1.5 py-0.5 bg-slate-900 rounded border border-slate-700/60" title="Akses Pembantu: Mod Kolaborasi Terhad (Hanya DO dibenarkan menambah program NOSS)">
                         🔒 Program Dikunci
                       </span>
                     )}
-
-                      {/* Dropdown Senarai Program untuk Ditambah */}
-                      {showAddProgramDropdown && (
-                        <div className="absolute right-0 mt-1.5 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-2 space-y-1">
-                          <div className="text-[10px] text-slate-400 font-semibold px-2 py-1 uppercase border-b border-slate-800">
-                            Pilih Program untuk Ditambah:
-                          </div>
-                          <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                            {Object.keys(nossDatabase)
-                              .filter(code => !selectedNossCodes.includes(code))
-                              .map(code => (
-                                <button
-                                  key={code}
-                                  onClick={() => handleAddProgram(code)}
-                                  className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-800 text-[11px] text-slate-200 flex flex-col transition"
-                                >
-                                  <span className="font-mono font-bold text-amber-300">{code}</span>
-                                  <span className="text-[10px] text-slate-400 truncate">{nossDatabase[code].title}</span>
-                                </button>
-                              ))}
-                            {Object.keys(nossDatabase).filter(code => !selectedNossCodes.includes(code)).length === 0 && (
-                              <div className="text-[11px] text-slate-500 px-2 py-1.5 text-center">Semua program telah dipilih.</div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
 
                     {/* Live Dot Indicator */}
                     {apiSuccessBadge && (

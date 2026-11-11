@@ -90,19 +90,21 @@
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
   
-    /* Teleprompter Marquee Animation - Terus nampak & meluncur lancar */
+    /* Teleprompter Marquee Animation - Terus nampak & berhenti serta-merta bila kursor diletak */
     @keyframes teleprompterScroll {
-      0% { transform: translateX(350px); }
+      0% { transform: translateX(40px); }
+      15% { transform: translateX(40px); }
       100% { transform: translateX(-100%); }
     }
     .teleprompter-track {
       display: inline-block;
       white-space: nowrap;
       will-change: transform;
-      animation: teleprompterScroll 28s linear infinite;
+      animation: teleprompterScroll 34s linear infinite;
     }
+    .teleprompter-wrapper:hover .teleprompter-track,
     .teleprompter-track:hover {
-      animation-play-state: paused;
+      animation-play-state: paused !important;
     }
 
   </style>
@@ -997,161 +999,20 @@
                     
                     {/* Program Utama / Pertama: Dikunci untuk Kolaborator / Pembantu, Hanya DO Boleh Tukar */}
                     {userRole === "DO" ? (
-                  <div className="space-y-3 text-xs max-h-[78vh] overflow-y-auto custom-scrollbar pr-1">
-                    <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-amber-900">👑 {doProfile?.name}</span>
-                          <span className="text-[9px] bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded font-bold">DO Aktif</span>
-                        </div>
-                        <p className="text-[10px] text-slate-600">{doProfile?.unit} ({doProfile?.email})</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleLogoutAccess}
-                        className="text-[11px] text-rose-600 hover:underline font-bold shrink-0"
+                      <select
+                        value={selectedNossCodes[0] || ""}
+                        onChange={(e) => handlePrimaryProgramChange(e.target.value)}
+                        className="bg-slate-900 text-slate-100 font-mono text-xs rounded border border-indigo-500/50 focus:ring-1 focus:ring-indigo-400 py-0.5 px-1.5 cursor-pointer max-w-[230px] truncate"
+                        title="Akses DO: Pilih atau tukar program NOSS utama"
                       >
-                        Log Keluar
-                      </button>
-                    </div>
-
-                    {/* PENGURUSAN 5 SLOT SESI KOLABORASI (HAD MASA 6 JAM SETIAP SESI) */}
-                    <div className="p-3 bg-slate-900 text-white rounded-lg space-y-2.5 border border-slate-700">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                        <span className="text-[11px] text-amber-300 font-bold">👥 Pengurusan Sesi Kolaborasi (Maksimum 5 Sesi)</span>
-                        <span className="text-[10px] bg-emerald-900/80 text-emerald-300 border border-emerald-600/40 px-1.5 py-0.5 rounded font-mono">
-                          Had: 6 Jam / Sesi
-                        </span>
-                      </div>
-
-                      {/* Input nama label sesi baharu */}
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={newSessionLabel}
-                          onChange={(e) => setNewSessionLabel(e.target.value)}
-                          placeholder="Label sesi (cth: Kumpulan Bengkel A)..."
-                          className="flex-1 bg-slate-800 border border-slate-700 text-slate-100 rounded px-2 py-1 text-[11px] focus:ring-1 focus:ring-indigo-400"
-                        />
-                      </div>
-
-                      {/* 5 Slot Sesi */}
-                      <div className="space-y-1.5">
-                        {[1, 2, 3, 4, 5].map(slotNum => {
-                          const existing = doSessions.find(s => Number(s.slot) === slotNum);
-                          const isCurrent = existing && activeSessionId === existing.sessionId;
-                          const minsLeft = existing ? Math.max(0, Math.round((existing.expiresAt - Date.now()) / 60000)) : 0;
-                          const hrsLeft = Math.floor(minsLeft / 60);
-                          const remMins = minsLeft % 60;
-
-                          return (
-                            <div
-                              key={slotNum}
-                              className={`p-2 rounded border text-[11px] transition ${
-                                isCurrent
-                                  ? 'bg-indigo-950/90 border-indigo-400'
-                                  : existing
-                                  ? 'bg-slate-800/90 border-slate-700'
-                                  : 'bg-slate-800/40 border-slate-800 border-dashed'
-                              }`}
-                            >
-                              {existing ? (
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <div className="flex items-center gap-1.5 truncate">
-                                      <span className="bg-amber-400 text-slate-950 font-bold px-1.5 py-0.2 rounded text-[10px]">
-                                        #{slotNum}
-                                      </span>
-                                      <span className="font-bold text-slate-100 truncate">{existing.label}</span>
-                                    </div>
-                                    <span className="text-[10px] font-mono text-emerald-400 shrink-0">
-                                      ⏳ {hrsLeft}j {remMins}m
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-center justify-between gap-1.5 bg-slate-950 px-2 py-1 rounded">
-                                    <span className="font-mono font-bold text-amber-300 tracking-wider text-xs select-all">
-                                      {existing.passkey}
-                                    </span>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCopyPasskey(existing.passkey)}
-                                        className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-0.5 rounded text-[10px]"
-                                        title="Salin kod passkey"
-                                      >
-                                        {copiedPasskey === existing.passkey ? "✓ Disalin" : "Salin Kod"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const baseUrl = window.location.origin + window.location.pathname;
-                                          const progs = existing.programs || selectedNossCodes.join(",");
-                                          const shareUrl = `${baseUrl}?noss=${encodeURIComponent(progs)}&passkey=${encodeURIComponent(existing.passkey)}`;
-                                          navigator.clipboard.writeText(shareUrl);
-                                          alert(`Pautan Sesi #${slotNum} (${existing.label}) disalin! Sah untuk 6 jam.`);
-                                        }}
-                                        className="bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded text-[10px] font-semibold"
-                                        title="Salin pautan terus untuk kolaborator"
-                                      >
-                                        Salin Link
-                                      </button>
-                                      {!isCurrent && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleSelectActiveSession(existing)}
-                                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded text-[10px]"
-                                          title="Buka ruang kerja sesi ini"
-                                        >
-                                          Buka
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        disabled={sessionBusy}
-                                        onClick={() => handleManageDOSession('revoke', slotNum)}
-                                        className="text-rose-400 hover:text-rose-300 px-1 font-bold"
-                                        title="Tamatkan sesi ini sekarang"
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center justify-between text-slate-400">
-                                  <span>Slot Sesi #{slotNum} (Kosong)</span>
-                                  <button
-                                    type="button"
-                                    disabled={sessionBusy}
-                                    onClick={() => handleManageDOSession('create', slotNum)}
-                                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-2.5 py-0.5 rounded text-[10px] transition"
-                                  >
-                                    {sessionBusy ? "..." : "+ Jana Sesi 6 Jam"}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
-                        Setiap sesi mempunyai ruang simpanan tersendiri dan akan <strong>tamat tempoh secara automatik selepas 6 jam</strong>.
-                      </p>
-                    </div>
-
-                    <div className="flex justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowPasskeyModal(false)}
-                        className="px-4 py-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 rounded"
-                      >
-                        Selesai
-                      </button>
-                    </div>
-                  </div>
-                ) : (
+                        <option value="">-- Pilih Program NOSS --</option>
+                        {Object.keys(nossDatabase).map(k => (
+                          <option key={k} value={k}>
+                            {k} ({nossDatabase[k].title ? nossDatabase[k].title.substring(0, 16) + '...' : ''} T{cleanTahapNumber(nossDatabase[k].tahap)})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
                       <div 
                         className="bg-slate-950 text-slate-200 font-mono text-xs px-2 py-0.5 rounded border border-slate-700/80 max-w-[230px] truncate cursor-not-allowed select-none flex items-center gap-1.5"
                         title="Program ditetapkan oleh Pegawai DO (Mod Kolaborasi dikunci)"
@@ -1475,8 +1336,7 @@
                                     className={`sticky top-0 z-30 border-b border-r border-slate-700 transition align-bottom ${isCovered ? 'bg-teal-900 text-teal-200 font-bold' : 'bg-slate-900 text-slate-300'} p-0 text-center w-[42px] min-w-[42px]`}
                                     title={`${isMultiProgram ? prog.code + ' ' : ''}${cu.id}-${wa.id}: ${wa.title}`}
                                     onMouseEnter={() => setHoveredWA({ cuId: cu.id, waId: wa.id, title: wa.title, rk: wa.rk, rs: wa.rs, rkHours: wa.rkHours, rsHours: wa.rsHours, progCode: prog.code })}
-                                    onMouseLeave={() => setHoveredWA(null)}
-                                  >
+                                                                      >
                                     {showFullWA ? (
                                       <div className="wa-vertical-title py-1">
                                         <span className="font-bold text-amber-300">{wa.id}.</span> {wa.title}
@@ -1829,28 +1689,24 @@
                       </div>
                     </div>
 
-                    {/* TINGKAT 2 (BAWAH): TELEPROMPTER MAKLUMAT PERINCIAN (TEORI & AMALI) */}
-                    <div className="flex items-center gap-2 bg-slate-900/90 px-2.5 py-1 rounded-md border border-slate-800 overflow-hidden">
-                      <span className="bg-indigo-600 text-white font-mono text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 flex items-center gap-1 shadow-xs">
-                        <span>📜 TELEPROMPTER</span>
-                      </span>
-
+                    {/* TINGKAT 2 (BAWAH): PERINCIAN KANDUNGAN BERGERAK (HOVER UNTUK HENTI / PAUSE) */}
+                    <div className="teleprompter-wrapper bg-slate-900/90 px-3 py-1.5 rounded-md border border-slate-800 overflow-hidden cursor-pointer" title="Tuding kursor di sini untuk memberhentikan pergerakan teks">
                       <div className="overflow-hidden relative w-full h-5 flex items-center">
                         {hoveredWA ? (
-                          <div key={`${hoveredWA.cuId}-${hoveredWA.waId}`} className="teleprompter-track text-slate-300 text-xs cursor-pointer" title="Perincian Penuh (Tuding kursor untuk henti)">
-                            <span className="text-amber-300 font-bold mr-1">📘 PENGETAHUAN TEORI (RK):</span>
-                            <span className="text-slate-200 mr-2">{hoveredWA.rk || "Tiada rekod teori khusus"}</span>
-                            {hoveredWA.rkHours ? <span className="bg-amber-900/40 text-amber-300 border border-amber-600/40 px-1.5 py-0.2 rounded font-mono text-[10px] mr-4 font-bold">⏱️ {hoveredWA.rkHours} Jam</span> : null}
+                          <div key={`${hoveredWA.progCode || ''}-${hoveredWA.cuId}-${hoveredWA.waId}`} className="teleprompter-track text-slate-200 text-xs">
+                            <span className="text-amber-300 font-bold mr-1.5">📘 PENGETAHUAN TEORI (RK):</span>
+                            <span className="text-slate-100 mr-2">{hoveredWA.rk || "Tiada rekod teori khusus"}</span>
+                            {hoveredWA.rkHours ? <span className="bg-amber-900/50 text-amber-300 border border-amber-600/50 px-1.5 py-0.2 rounded font-mono text-[10px] mr-5 font-bold">⏱️ {hoveredWA.rkHours} Jam</span> : null}
 
-                            <span className="text-teal-400 mx-2">|</span>
+                            <span className="text-slate-600 mx-3">•</span>
 
-                            <span className="text-emerald-300 font-bold mr-1">🛠️ KEMAHIRAN AMALI (RS):</span>
-                            <span className="text-slate-200 mr-2">{hoveredWA.rs || "Tiada rekod amali khusus"}</span>
-                            {hoveredWA.rsHours ? <span className="bg-emerald-900/40 text-emerald-300 border border-emerald-600/40 px-1.5 py-0.2 rounded font-mono text-[10px] font-bold">⏱️ {hoveredWA.rsHours} Jam</span> : null}
+                            <span className="text-emerald-300 font-bold mr-1.5">🛠️ KEMAHIRAN AMALI (RS):</span>
+                            <span className="text-slate-100 mr-2">{hoveredWA.rs || "Tiada rekod amali khusus"}</span>
+                            {hoveredWA.rsHours ? <span className="bg-emerald-900/50 text-emerald-300 border border-emerald-600/50 px-1.5 py-0.2 rounded font-mono text-[10px] font-bold">⏱️ {hoveredWA.rsHours} Jam</span> : null}
                           </div>
                         ) : (
                           <div className="text-slate-500 text-[11px] italic">
-                            Maklumat terperinci (Related Knowledge & Applied Skills) akan ditayangkan di sini secara teleprompter...
+                            Halakan kursor pada mana-mana lajur WA atau petak matriks untuk memaparkan perincian penuh teori & amali di sini...
                           </div>
                         )}
                       </div>
@@ -2312,66 +2168,158 @@
                   <button type="button" onClick={() => setShowPasskeyModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
                 </div>
 
-                {/* JIKA SUDAH LOG MASUK SEBAGAI DO: PAPARKAN PROFIL & PASSKEY HARIAN YANG DIJANA SKRIP */}
+                {/* JIKA SUDAH LOG MASUK SEBAGAI DO: PAPARKAN PROFIL & PENGURUSAN 5 SESI KOLABORASI */}
                 {userRole === "DO" ? (
-                  <div className="space-y-3 text-xs">
-                    <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-amber-900">👑 Pegawai DO Disahkan</span>
-                        <span className="text-[10px] bg-amber-200 text-amber-950 px-2 py-0.5 rounded font-bold">Akses Penuh</span>
+                  <div className="space-y-3 text-xs max-h-[78vh] overflow-y-auto custom-scrollbar pr-1">
+                    <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-amber-900">👑 {doProfile?.name}</span>
+                          <span className="text-[9px] bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded font-bold">DO Aktif</span>
+                        </div>
+                        <p className="text-[10px] text-slate-600">{doProfile?.unit} ({doProfile?.email})</p>
                       </div>
-                      <p className="font-semibold text-slate-800">{doProfile?.name}</p>
-                      <p className="text-[11px] text-slate-600">{doProfile?.unit} ({doProfile?.email})</p>
-                    </div>
-
-                    <div className="p-3 bg-slate-900 text-white rounded-lg space-y-2 border border-slate-700">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-slate-300 font-semibold">Passkey Kolaborasi Hari Ini (Dijana Skrip):</span>
-                        <span className="text-[10px] text-emerald-400 font-mono">Auto-Reset 24j</span>
-                      </div>
-                      <div className="flex items-center justify-between bg-slate-800 px-3 py-2 rounded border border-slate-700">
-                        <span className="font-mono text-base font-bold tracking-widest text-amber-300 select-all">
-                          {dailyAutoPasskey || "JPK-AUTO"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleCopyPasskey}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded transition"
-                        >
-                          {copiedPasskey ? "✓ Disalin" : "Salin Passkey"}
-                        </button>
-                      </div>
-
-                      {/* BUTANG SALIN PAUTAN KOLABORASI SEGERAK */}
-                      <div className="pt-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const baseUrl = window.location.origin + window.location.pathname;
-                            const progs = selectedNossCodes.join(",");
-                            const shareUrl = `${baseUrl}?noss=${encodeURIComponent(progs)}&passkey=${encodeURIComponent(dailyAutoPasskey)}`;
-                            navigator.clipboard.writeText(shareUrl);
-                            alert("Pautan kolaborasi telah disalin! Pembantu yang membuka pautan ini akan terus melihat program NOSS yang sama.");
-                          }}
-                          className="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold py-2 px-3 rounded flex items-center justify-center gap-1.5 transition shadow"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                          <span>Salin Pautan Kolaborasi (Bersama Program Terpilih)</span>
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-slate-400 leading-relaxed">
-                        Kongsikan passkey ini kepada pembantu di talian Wi-Fi sepunya. Pembantu boleh mengisi matriks, modul & ulasan <strong>kecuali</strong> menambah/menukar program NOSS.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t">
                       <button
                         type="button"
                         onClick={handleLogoutAccess}
-                        className="text-xs text-rose-600 hover:text-rose-800 font-semibold"
+                        className="text-[11px] text-rose-600 hover:underline font-bold shrink-0"
                       >
-                        Kunci Semula (Log Keluar)
+                        Log Keluar
                       </button>
+                    </div>
+
+                    {/* PENGURUSAN 5 SLOT SESI KOLABORASI (HAD MASA 6 JAM SETIAP SESI) */}
+                    <div className="p-3 bg-slate-900 text-white rounded-lg space-y-2.5 border border-slate-700">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                        <span className="text-[11px] text-amber-300 font-bold">👥 Sesi Kolaborasi (Maksimum 5 Sesi)</span>
+                        <span className="text-[10px] bg-emerald-900/80 text-emerald-300 border border-emerald-600/40 px-1.5 py-0.5 rounded font-mono">
+                          Had: 6 Jam / Sesi
+                        </span>
+                      </div>
+
+                      {/* Input nama label sesi baharu */}
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={newSessionLabel}
+                          onChange={(e) => setNewSessionLabel(e.target.value)}
+                          placeholder="Label sesi (cth: Kumpulan Bengkel A)..."
+                          className="flex-1 bg-slate-800 border border-slate-700 text-slate-100 rounded px-2 py-1 text-[11px] focus:ring-1 focus:ring-indigo-400"
+                        />
+                      </div>
+
+                      {/* 5 Slot Sesi */}
+                      <div className="space-y-1.5">
+                        {[1, 2, 3, 4, 5].map(slotNum => {
+                          const existing = doSessions.find(s => Number(s.slot) === slotNum);
+                          const isCurrent = existing && activeSessionId === existing.sessionId;
+                          const minsLeft = existing ? Math.max(0, Math.round((existing.expiresAt - Date.now()) / 60000)) : 0;
+                          const hrsLeft = Math.floor(minsLeft / 60);
+                          const remMins = minsLeft % 60;
+
+                          return (
+                            <div
+                              key={slotNum}
+                              className={`p-2 rounded border text-[11px] transition ${
+                                isCurrent
+                                  ? 'bg-indigo-950/90 border-indigo-400'
+                                  : existing
+                                  ? 'bg-slate-800/90 border-slate-700'
+                                  : 'bg-slate-800/40 border-slate-800 border-dashed'
+                              }`}
+                            >
+                              {existing ? (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span className="bg-amber-400 text-slate-950 font-bold px-1.5 py-0.2 rounded text-[10px]">
+                                        #{slotNum}
+                                      </span>
+                                      <span className="font-bold text-slate-100 truncate">{existing.label}</span>
+                                      {isCurrent && (
+                                        <span className="text-[9px] bg-indigo-500/30 text-indigo-200 border border-indigo-400/50 px-1 rounded font-semibold shrink-0">
+                                          Aktif Dipapar
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] font-mono text-emerald-400 shrink-0">
+                                      ⏳ {hrsLeft}j {remMins}m
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center justify-between gap-1.5 bg-slate-950 px-2 py-1 rounded">
+                                    <span className="font-mono font-bold text-amber-300 tracking-wider text-xs select-all">
+                                      {existing.passkey}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyPasskey(existing.passkey)}
+                                        className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-0.5 rounded text-[10px]"
+                                        title="Salin kod passkey"
+                                      >
+                                        {copiedPasskey === existing.passkey ? "✓ Disalin" : "Salin Kod"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const baseUrl = window.location.origin + window.location.pathname;
+                                          const progs = existing.programs || selectedNossCodes.join(",");
+                                          const shareUrl = `${baseUrl}?noss=${encodeURIComponent(progs)}&passkey=${encodeURIComponent(existing.passkey)}`;
+                                          navigator.clipboard.writeText(shareUrl);
+                                          alert(`Pautan Sesi #${slotNum} (${existing.label}) disalin! Sah untuk 6 jam.`);
+                                        }}
+                                        className="bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded text-[10px] font-semibold"
+                                        title="Salin pautan terus untuk kolaborator"
+                                      >
+                                        Salin Link
+                                      </button>
+                                      {!isCurrent && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSelectActiveSession(existing)}
+                                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-0.5 rounded text-[10px]"
+                                          title="Buka ruang kerja sesi ini"
+                                        >
+                                          Buka
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        disabled={sessionBusy}
+                                        onClick={() => handleManageDOSession('revoke', slotNum)}
+                                        className="text-rose-400 hover:text-rose-300 px-1 font-bold"
+                                        title="Tamatkan sesi ini sekarang"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between text-slate-400">
+                                  <span>Slot Sesi #{slotNum} (Kosong)</span>
+                                  <button
+                                    type="button"
+                                    disabled={sessionBusy}
+                                    onClick={() => handleManageDOSession('create', slotNum)}
+                                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-2.5 py-0.5 rounded text-[10px] transition"
+                                  >
+                                    {sessionBusy ? "..." : "+ Jana Sesi 6 Jam"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
+                        Setiap sesi mempunyai ruang simpanan tersendiri dan akan <strong>tamat tempoh secara automatik selepas 6 jam</strong>.
+                      </p>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
                       <button
                         type="button"
                         onClick={() => setShowPasskeyModal(false)}

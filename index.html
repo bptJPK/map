@@ -13,46 +13,59 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <!-- SheetJS (xlsx) for Excel processing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- JSZip for Pakej Rasmi ZIP -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     @page {
       size: A4 landscape;
-      margin: 8mm 6mm;
+      margin: 7mm 6mm;
     }
     @media print {
-      body {
+      html, body {
         background: white !important;
         color: black !important;
+        font-family: Arial, Helvetica, sans-serif !important;
         font-size: 8pt !important;
-        line-height: 1.15 !important;
+        line-height: 1.2 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
-      .no-print { display: none !important; }
-      .print-only { display: block !important; }
-      .print-table {
+      .no-print, header, main, footer { display: none !important; }
+      #jpk-print-suite { display: block !important; width: 100% !important; }
+      .jpk-page-break { page-break-after: always !important; break-after: page !important; }
+      .jpk-page-break:last-child { page-break-after: auto !important; break-after: auto !important; }
+      .jpk-table {
         width: 100% !important;
-        max-width: 100% !important;
-        table-layout: auto !important;
         border-collapse: collapse !important;
-        border: 1px solid #1e293b !important;
-      }
-      .print-table th, .print-table td {
-        border: 1px solid #334155 !important;
-        padding: 3px 4px !important;
+        border: 1.2px solid #000 !important;
         font-size: 7.5pt !important;
+      }
+      .jpk-table th, .jpk-table td {
+        border: 1px solid #000 !important;
+        padding: 3.5px 4.5px !important;
+        vertical-align: top !important;
         word-break: break-word !important;
       }
-      .page-break { page-break-after: always; }
-      .sticky-c1, .sticky-c2, .sticky-c3, .sticky { position: static !important; }
-      .print-show-col { display: table-cell !important; }
-      .print-hide-col { display: none !important; }
-      input, textarea, select {
-        border: none !important;
-        background: transparent !important;
-        padding: 0 !important;
-        resize: none !important;
-        width: 100% !important;
-        font-size: 7.5pt !important;
+      .jpk-table thead { display: table-header-group !important; }
+      .jpk-wa-single { break-inside: avoid !important; page-break-inside: avoid !important; }
+      .jpk-wa-multi tr { break-inside: avoid !important; page-break-inside: avoid !important; }
+      .jpk-sign-box { break-inside: avoid !important; page-break-inside: avoid !important; }
+      .jpk-va-header {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        white-space: nowrap;
+        height: 95px;
+        max-height: 95px;
+        font-size: 7pt;
+        line-height: 1.1;
+        text-align: left;
+        margin: 0 auto;
+        overflow: hidden;
       }
     }
+    #jpk-print-suite { display: none; }
     .print-only { display: none; }
     .print-show-col { display: none; }
 
@@ -247,6 +260,24 @@
       // MAKLUMAT AGENSI & PROGRAM BOLEH DISUNTING (TAB 2)
       const [agencyName, setAgencyName] = useState("KOLEJ KEMAHIRAN VOKASIONAL SERI ISKANDAR");
       const [programName, setProgramName] = useState("DIPLOMA TEKNOLOGI KIMPALAN & FABRIKASI");
+      const [programCode, setProgramCode] = useState("DKM-MC024");
+      const [showPrintCenterModal, setShowPrintCenterModal] = useState(false);
+      const [showSignConfig, setShowSignConfig] = useState(false);
+      const [isExportingZip, setIsExportingZip] = useState(false);
+      const [printFilter, setPrintFilter] = useState("ALL"); // "ALL" | "02A" | "03" | "04AB"
+      const [overallRemarks04A, setOverallRemarks04A] = useState("");
+      const [overallRemarks04B, setOverallRemarks04B] = useState("");
+      const [panelRecommendation04B, setPanelRecommendation04B] = useState(""); // "" | "MEMPERAKU" | "BERSYARAT" | "TIDAK"
+      const [signatories04A, setSignatories04A] = useState({
+        ahli1Name: "", ahli1Ic: "", ahli1Date: "",
+        ahli2Name: "", ahli2Ic: "", ahli2Date: "",
+        chairName: "", chairIc: "", chairDate: ""
+      });
+      const [signatories04B, setSignatories04B] = useState({
+        ahli1Name: "", ahli1Ic: "", ahli1Date: "",
+        ahli2Name: "", ahli2Ic: "", ahli2Date: "",
+        chairName: "", chairIc: "", chairDate: ""
+      });
 
       const [modules, setModules] = useState(INITIAL_MODULES);
 
@@ -306,7 +337,8 @@
               gapRemarks,
               committeeRemarks,
               agencyName,
-              programName
+              programName,
+              programCode
             }
           };
 
@@ -348,6 +380,7 @@
             if (d.committeeRemarks) setCommitteeRemarks(d.committeeRemarks);
             if (d.agencyName) setAgencyName(d.agencyName);
             if (d.programName) setProgramName(d.programName);
+            if (d.programCode) setProgramCode(d.programCode);
             if (json.lastUpdated) setLastSyncTime(json.lastUpdated);
             if (json.updatedBy) setLastSyncUser(json.updatedBy);
             setCloudStatusMsg("Data terkini dimuatkan");
@@ -976,6 +1009,203 @@
 
       const isMultiProgram = selectedPrograms.length > 1;
 
+      // HELPER: JANA FAIL EXCEL (.XLSX) LENGKAP 4 HELAIAN (02-A, 03, 04-A, 04-B)
+      const generateOfficialExcelBuffer = () => {
+        const wb = XLSX.utils.book_new();
+        const skpkTitleStr = selectedPrograms.map(p => p.title).join(" + ");
+        const skpkCodeStr = selectedPrograms.map(p => formatSkpkCodeWithTahap(p.code, p.tahap)).join(" | ");
+
+        // --- SHEET 1: JPK_02A_Matriks ---
+        const ws02Data = [
+          ["JABATAN PEMBANGUNAN KEMAHIRAN (JPK) - KEMENTERIAN SUMBER MANUSIA"],
+          ["BORANG MATRIKS PEMETAAN KURIKULUM PROGRAM AGENSI BERDASARKAN SKPK (JPK/PEMETAAN/02-A)"],
+          ["NAMA AGENSI:", agencyName, "", "TAJUK SKPK (NOSS):", skpkTitleStr],
+          ["NAMA PROGRAM AGENSI:", programName, "", "KOD SKPK (NOSS):", skpkCodeStr],
+          ["KOD PROGRAM AGENSI:", programCode || "-", "", "", ""],
+          []
+        ];
+        const headerRowCU = ["NO", "KOD MODUL", "MODUL / SUB-MODUL AGENSI"];
+        const headerRowWA = ["", "", ""];
+        const flatWAs = [];
+        selectedPrograms.forEach(prog => {
+          (prog.cus || []).forEach(cu => {
+            cu.was.forEach(wa => {
+              headerRowCU.push(`${isMultiProgram ? prog.code + ' ' : ''}${cu.id}: ${cu.title}`);
+              headerRowWA.push(`${wa.id} - ${wa.title}`);
+              flatWAs.push({ progCode: prog.code, cuId: cu.id, waId: wa.id });
+            });
+          });
+        });
+        ws02Data.push(headerRowCU);
+        ws02Data.push(headerRowWA);
+
+        modules.forEach((mod, mIdx) => {
+          const modRow = [mIdx + 1, mod.code, mod.title];
+          flatWAs.forEach(() => modRow.push(""));
+          ws02Data.push(modRow);
+
+          (mod.subModules || []).forEach((sm, sIdx) => {
+            const subRow = [`${mIdx + 1}.${sIdx + 1}`, sm.code, `   ↳ ${sm.name}`];
+            flatWAs.forEach(fw => {
+              const gId = `${fw.cuId}-${fw.waId}`;
+              const fullId = `${fw.progCode}-${gId}`;
+              const ticked = (sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullId);
+              subRow.push(ticked ? "X" : "");
+            });
+            ws02Data.push(subRow);
+          });
+        });
+
+        const ws02 = XLSX.utils.aoa_to_sheet(ws02Data);
+        XLSX.utils.book_append_sheet(wb, ws02, "JPK_02A_Matriks");
+
+        // --- SHEET 2: JPK_03_Padanan_Kandungan ---
+        const ws03Data = [
+          ["BORANG PEMETAAN KANDUNGAN KURIKULUM PROGRAM AGENSI BERDASARKAN SKPK (JPK/PEMETAAN/03)"],
+          ["NAMA AGENSI:", agencyName, "TAJUK SKPK:", skpkTitleStr],
+          ["NAMA PROGRAM AGENSI:", programName, "KOD SKPK:", skpkCodeStr],
+          ["KOD PROGRAM AGENSI:", programCode || "-"],
+          [],
+          ["KOD PROGRAM", "CU", "WA", "TAJUK WA", "RELATED KNOWLEDGE (SKPK)", "JAM RK", "APPLIED SKILLS (SKPK)", "JAM RS", "MODUL AGENSI", "KNOWLEDGE / SUB TOPIC", "JAM TEORI", "APPLIED SKILLS AGENSI", "JAM AMALI", "MEMENUHI (YA/TIDAK)", "CATATAN (GAP)"]
+        ];
+        selectedPrograms.forEach(prog => {
+          (prog.cus || []).forEach(cu => {
+            cu.was.forEach(wa => {
+              const gId = `${cu.id}-${wa.id}`;
+              const fullKey = `${prog.code}-${gId}`;
+              const matching = [];
+              modules.forEach(m => m.subModules.forEach(sm => {
+                if ((sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullKey)) matching.push({ mod: m, sub: sm });
+              }));
+              const defaultFulfilled = matching.length > 0;
+              const isFulfilled = manualCompliance[fullKey] !== undefined ? manualCompliance[fullKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultFulfilled);
+              const remark = gapRemarks[fullKey] !== undefined ? gapRemarks[fullKey] : (gapRemarks[gId] !== undefined ? gapRemarks[gId] : (isFulfilled ? "Memenuhi standard minimum." : "Kandungan tiada dalam modul agensi."));
+
+              if (matching.length === 0) {
+                ws03Data.push([prog.code, cu.id, wa.id, wa.title, wa.rk, wa.rkHours, wa.rs, wa.rsHours, "-", "Tiada modul agensi dipadankan", 0, "-", 0, isFulfilled ? "Ya" : "Tidak", remark]);
+              } else {
+                matching.forEach((item, idx) => {
+                  ws03Data.push([
+                    prog.code, cu.id, idx === 0 ? wa.id : `${wa.id} (Samb.)`, idx === 0 ? wa.title : "",
+                    idx === 0 ? wa.rk : "", idx === 0 ? wa.rkHours : "", idx === 0 ? wa.rs : "", idx === 0 ? wa.rsHours : "",
+                    `${item.mod.code} - ${item.sub.name}`, item.sub.knowledge, item.sub.rkHours, item.sub.skills, item.sub.rsHours,
+                    idx === 0 ? (isFulfilled ? "Ya" : "Tidak") : "", idx === 0 ? remark : ""
+                  ]);
+                });
+              }
+            });
+          });
+        });
+        const ws03 = XLSX.utils.aoa_to_sheet(ws03Data);
+        XLSX.utils.book_append_sheet(wb, ws03, "JPK_03_Padanan");
+
+        // --- SHEET 3: JPK_04A_&_04B_Rumusan ---
+        const ws04Data = [
+          ["BORANG RUMUSAN PEMETAAN KURIKULUM PROGRAM AGENSI BERDASARKAN SKPK (JPK/PEMETAAN/04-A & 04-B)"],
+          ["NAMA AGENSI:", agencyName, "TAJUK SKPK:", skpkTitleStr],
+          ["NAMA PROGRAM AGENSI:", programName, "KOD SKPK:", skpkCodeStr],
+          ["KOD PROGRAM AGENSI:", programCode || "-"],
+          [],
+          ["KOD PROGRAM", "CU/DUTY", "BIL WA (A)", "DIPENUHI (B)", "% DIPENUHI", "WA TIDAK DIPENUHI", "SKPK KNOWLEDGE (JAM)", "SKPK SKILLS (JAM)", "AGENSI KNOWLEDGE (JAM)", "AGENSI SKILLS (JAM)", "CADANGAN / ULASAN JAWATANKUASA"]
+        ];
+        let sumPct = 0;
+        let totalCuCount = 0;
+        selectedPrograms.forEach(prog => {
+          (prog.cus || []).forEach(cu => {
+            const cuKey = `${prog.code}-${cu.id}`;
+            const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
+            sumPct += st.pct;
+            totalCuCount += 1;
+            const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
+            const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
+            let agRkH = 0, agRsH = 0;
+            modules.forEach(m => m.subModules.forEach(sm => {
+              if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
+                agRkH += Number(sm.rkHours) || 0;
+                agRsH += Number(sm.rsHours) || 0;
+              }
+            }));
+            ws04Data.push([
+              prog.code, `${cu.id}: ${cu.title}`, st.totalWA, st.metWA, `${st.pct}%`,
+              st.missingWAs.length === 0 ? "Lengkap" : st.missingWAs.map(w => w.id).join(", "),
+              nossRkH, nossRsH, agRkH, agRsH, committeeRemarks[cuKey] || ""
+            ]);
+          });
+        });
+        const avgPct = totalCuCount > 0 ? (sumPct / totalCuCount).toFixed(2) : "0.00";
+        ws04Data.push(["", "JUMLAH % KESELURUHAN (Jumlah % / Bilangan CU)", "", "", `${avgPct}%`, "", "", "", "", "", ""]);
+        const ws04 = XLSX.utils.aoa_to_sheet(ws04Data);
+        XLSX.utils.book_append_sheet(wb, ws04, "JPK_04A_04B_Rumusan");
+
+        return XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      };
+
+      const handleDownloadZipPackage = async () => {
+        if (typeof JSZip === "undefined") {
+          alert("Pustaka JSZip sedang dimuatkan. Sila cuba sebentar lagi.");
+          return;
+        }
+        setIsExportingZip(true);
+        try {
+          const zip = new JSZip();
+          const progSlug = (selectedNossCodes[0] || "NOSS").replace(/[^a-zA-Z0-9_-]/g, "_");
+          const xlsxBuffer = generateOfficialExcelBuffer();
+          zip.file(`Rekod_Pemetaan_${progSlug}_(JPK02A_03_04A_04B).xlsx`, xlsxBuffer);
+
+          const readmeTxt = `PAKEJ DOKUMEN RASMI PEMETAAN KURIKULUM & SKPK (NOSS)
+` +
+            `=================================================================
+` +
+            `Agensi        : ${agencyName}
+` +
+            `Program       : ${programName} (${programCode || '-'})
+` +
+            `Kod NOSS      : ${selectedPrograms.map(p => formatSkpkCodeWithTahap(p.code, p.tahap)).join(" | ")}
+` +
+            `Tarikh Jana   : ${new Date().toLocaleString('ms-MY')}
+
+` +
+            `KANDUNGAN PAKEJ:
+` +
+            `1. Rekod_Pemetaan_${progSlug}_(JPK02A_03_04A_04B).xlsx
+` +
+            `   - Sheet 1: JPK_02A_Matriks (Matriks Standard Penuh)
+` +
+            `   - Sheet 2: JPK_03_Padanan (Padanan Kandungan & GAP)
+` +
+            `   - Sheet 3: JPK_04A_04B_Rumusan (Rumusan & Peratusan)
+
+` +
+            `2. Untuk mencetak atau menyimpan fail PDF rasmi JPK (JPK/PEMETAAN/02-A,
+` +
+            `   JPK/PEMETAAN/03 pecahan setiap CU, JPK/PEMETAAN/04-A & 04-B),
+` +
+            `   klik butang 'Cetak / Simpan PDF Rasmi' pada sistem dan pilih 'Save as PDF'.
+`;
+          zip.file("BACA_SAYA_Panduan_Cetakan_PDF.txt", readmeTxt);
+
+          const blob = await zip.generateAsync({ type: "blob" });
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = `Pakej_Pemetaan_${progSlug}.zip`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (err) {
+          alert("Gagal menjana pakej ZIP: " + err.message);
+        } finally {
+          setIsExportingZip(false);
+        }
+      };
+
+      const triggerOfficialPrint = (filterMode = "ALL") => {
+        setPrintFilter(filterMode);
+        setShowPrintCenterModal(false);
+        setTimeout(() => {
+          window.print();
+        }, 250);
+      };
+
       return (
         <div className="flex flex-col min-h-screen">
           
@@ -1151,13 +1381,14 @@
                     )}
                   </div>
 
-                                    {/* Cetak Rasmi */}
+                                    {/* Cetak / Eksport Rasmi JPK */}
                   <button 
-                    onClick={() => window.print()}
-                    className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-2.5 py-1.5 rounded-lg shadow text-xs transition"
+                    onClick={() => setShowPrintCenterModal(true)}
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg shadow text-xs transition"
+                    title="Cetak Borang Rasmi JPK (02-A, 03, 04-A, 04-B) atau Muat Turun Pakej ZIP/Excel"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                    Cetak Rasmi
+                    <span>Cetak / Eksport JPK</span>
                   </button>
                 </div>
               </div>
@@ -1751,16 +1982,26 @@
                       </div>
                     </div>
 
-                    {/* NAMA PROGRAM AGENSI (BOLEH TAIP / PINDA TERUS) */}
+                    {/* NAMA & KOD PROGRAM AGENSI (BOLEH TAIP / PINDA TERUS) */}
                     <div className="flex items-center gap-2">
-                      <span className="w-40 font-semibold text-slate-600 shrink-0">NAMA PROGRAM AGENSI:</span>
-                      <input
-                        type="text"
-                        value={programName}
-                        onChange={(e) => setProgramName(e.target.value)}
-                        className="font-bold text-slate-800 border border-slate-200 rounded px-2 py-1 w-full text-xs focus:ring-1 focus:ring-indigo-500 bg-slate-50/50"
-                        placeholder="Masukkan nama program agensi..."
-                      />
+                      <span className="w-40 font-semibold text-slate-600 shrink-0">NAMA & KOD PROGRAM:</span>
+                      <div className="flex items-center gap-1.5 w-full">
+                        <input
+                          type="text"
+                          value={programName}
+                          onChange={(e) => setProgramName(e.target.value)}
+                          className="font-bold text-slate-800 border border-slate-200 rounded px-2 py-1 flex-1 text-xs focus:ring-1 focus:ring-indigo-500 bg-slate-50/50"
+                          placeholder="Nama program agensi..."
+                        />
+                        <input
+                          type="text"
+                          value={programCode}
+                          onChange={(e) => setProgramCode(e.target.value)}
+                          className="font-mono font-bold text-indigo-800 border border-slate-200 rounded px-2 py-1 w-28 text-xs focus:ring-1 focus:ring-indigo-500 bg-slate-50/50"
+                          placeholder="Kod Program"
+                          title="Kod Program Agensi untuk cetakan JPK"
+                        />
+                      </div>
                     </div>
 
                     {/* KOD SKPK (NOSS): DIBERSIHKAN DARI PERKATAAN TAHAP BERGANDA */}
@@ -2619,6 +2860,839 @@
           <footer className="bg-white border-t border-slate-200 py-2 text-center text-[11px] text-slate-400 no-print">
             Sistem Pemetaan Kurikulum & NOSS Bersepadu © 2026
           </footer>
+          {/* =====================================================================
+              MODAL PUSAT CETAKAN & EKSPORT RASMI JPK (PDF + EXCEL + ZIP)
+          ===================================================================== */}
+          {showPrintCenterModal && (
+            <div className="fixed inset-0 bg-slate-900/75 z-50 flex items-center justify-center p-4 no-print">
+              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-5 space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                <div className="flex items-center justify-between border-b pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-sm">Pusat Cetakan & Eksport Dokumen Rasmi JPK</h3>
+                      <p className="text-[11px] text-slate-500">Susun atur rasmi Jata Negara, kotak muka surat pepenjuru & pecahan mengikut CU.</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setShowPrintCenterModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                </div>
+
+                {/* PILIHAN TINDAKAN UTAMA: CETAK PDF ATAU MUAT TURUN ZIP */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => triggerOfficialPrint("ALL")}
+                    className="p-3.5 rounded-xl border-2 border-indigo-600 bg-indigo-50 hover:bg-indigo-100 text-left space-y-1.5 transition shadow-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-indigo-950 text-sm">🖨️ Cetak / Simpan PDF Lengkap</span>
+                      <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded font-bold">A4 Landscape</span>
+                    </div>
+                    <p className="text-[11px] text-indigo-900/80 leading-relaxed">
+                      Menjana set lengkap <strong>JPK/PEMETAAN/02-A</strong>, <strong>JPK/PEMETAAN/03</strong> (pecahan setiap CU), <strong>JPK/PEMETAAN/04-A</strong> & <strong>04-B</strong>.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isExportingZip}
+                    onClick={handleDownloadZipPackage}
+                    className="p-3.5 rounded-xl border-2 border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-left space-y-1.5 transition shadow-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-950 text-sm">📦 {isExportingZip ? "Menjana ZIP..." : "Muat Turun Pakej ZIP"}</span>
+                      <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded font-bold">.ZIP + .XLSX</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-900/80 leading-relaxed">
+                      Memuat turun arkib <strong>.ZIP</strong> mengandungi fail kerja <strong>Excel 4 Helaian</strong> (Matriks, Padanan, Rumusan 04-A & 04-B) + panduan cetak PDF.
+                    </p>
+                  </button>
+                </div>
+
+                {/* PILIHAN CETAK BORANG TERTENTU SAHAJA */}
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs">
+                  <span className="font-bold text-slate-700 block text-[11px] uppercase tracking-wider">Atau Cetak Borang Tertentu Sahaja:</span>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => triggerOfficialPrint("02A")} className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-slate-800 text-[11px]">
+                      📄 JPK/PEMETAAN/02-A (Matriks)
+                    </button>
+                    <button type="button" onClick={() => triggerOfficialPrint("03")} className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-slate-800 text-[11px]">
+                      📄 JPK/PEMETAAN/03 (Padanan CU)
+                    </button>
+                    <button type="button" onClick={() => triggerOfficialPrint("04AB")} className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-slate-800 text-[11px]">
+                      📄 JPK/PEMETAAN/04-A & 04-B (Rumusan & Tandatangan)
+                    </button>
+                  </div>
+                </div>
+
+                {/* BAHAGIAN OPTIONAL: PENGISIAN NAMA AJK & SYOR PANEL SEBELUM CETAK */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setShowSignConfig(!showSignConfig)}
+                    className="w-full px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200/70 flex items-center justify-between font-bold text-slate-800 text-left transition"
+                  >
+                    <span>✍️ Tetapan Ulasan, Syor Panel & Nama Tandatangan AJK (Pilihan — Kosongkan Jika Tulis Tangan)</span>
+                    <span>{showSignConfig ? "▲" : "▼"}</span>
+                  </button>
+
+                  {showSignConfig && (
+                    <div className="p-3.5 space-y-4 bg-white">
+                      {/* Ulasan & Syor */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block font-bold text-slate-700 mb-1">Ulasan Keseluruhan (JPK 04-A - Agensi):</label>
+                          <textarea
+                            rows="2"
+                            value={overallRemarks04A}
+                            onChange={(e) => setOverallRemarks04A(e.target.value)}
+                            placeholder="Kosongkan jika mahu tulis tangan..."
+                            className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 mb-1">Ulasan Keseluruhan (JPK 04-B - Panel PPPPA):</label>
+                          <textarea
+                            rows="2"
+                            value={overallRemarks04B}
+                            onChange={(e) => setOverallRemarks04B(e.target.value)}
+                            placeholder="Kosongkan jika mahu tulis tangan..."
+                            className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Syor Panel Penilai PPPPA (JPK 04-B):</label>
+                        <div className="flex flex-wrap gap-3">
+                          {[
+                            { val: "", label: "Biarkan Kosong (Tandakan Fizikal)" },
+                            { val: "MEMPERAKU", label: "☑ MEMPERAKU" },
+                            { val: "BERSYARAT", label: "☑ MEMPERAKU SECARA BERSYARAT" },
+                            { val: "TIDAK", label: "☑ TIDAK MEMPERAKU" }
+                          ].map(opt => (
+                            <label key={opt.val} className="inline-flex items-center gap-1.5 cursor-pointer bg-slate-50 px-2.5 py-1 rounded border border-slate-200">
+                              <input
+                                type="radio"
+                                name="syor04b"
+                                checked={panelRecommendation04B === opt.val}
+                                onChange={() => setPanelRecommendation04B(opt.val)}
+                              />
+                              <span className="font-semibold text-[11px]">{opt.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Nama AJK JPK 04-A */}
+                      <div className="space-y-1.5 pt-2 border-t">
+                        <span className="font-bold text-indigo-800 block">Tandatangan Jawatankuasa Pemetaan Kendiri Agensi (JPK 04-A):</span>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">AHLI 1</span>
+                            <input type="text" placeholder="Nama Penuh" value={signatories04A.ahli1Name} onChange={e => setSignatories04A({...signatories04A, ahli1Name: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="No. Kad Pengenalan" value={signatories04A.ahli1Ic} onChange={e => setSignatories04A({...signatories04A, ahli1Ic: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={signatories04A.ahli1Date} onChange={e => setSignatories04A({...signatories04A, ahli1Date: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">AHLI 2</span>
+                            <input type="text" placeholder="Nama Penuh" value={signatories04A.ahli2Name} onChange={e => setSignatories04A({...signatories04A, ahli2Name: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="No. Kad Pengenalan" value={signatories04A.ahli2Ic} onChange={e => setSignatories04A({...signatories04A, ahli2Ic: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={signatories04A.ahli2Date} onChange={e => setSignatories04A({...signatories04A, ahli2Date: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">PENGERUSI</span>
+                            <input type="text" placeholder="Nama Penuh" value={signatories04A.chairName} onChange={e => setSignatories04A({...signatories04A, chairName: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="No. Kad Pengenalan" value={signatories04A.chairIc} onChange={e => setSignatories04A({...signatories04A, chairIc: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={signatories04A.chairDate} onChange={e => setSignatories04A({...signatories04A, chairDate: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Nama Panel JPK 04-B */}
+                      <div className="space-y-1.5 pt-2 border-t">
+                        <span className="font-bold text-amber-800 block">Tandatangan Panel Penilai Pemetaan Program Agensi - PPPPA (JPK 04-B):</span>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">AHLI 1 (PANEL)</span>
+                            <input type="text" placeholder="Nama Penuh" value={signatories04B.ahli1Name} onChange={e => setSignatories04B({...signatories04B, ahli1Name: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="No. Kad Pengenalan" value={signatories04B.ahli1Ic} onChange={e => setSignatories04B({...signatories04B, ahli1Ic: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={signatories04B.ahli1Date} onChange={e => setSignatories04B({...signatories04B, ahli1Date: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">AHLI 2 (PANEL)</span>
+                            <input type="text" placeholder="Nama Penuh" value={signatories04B.ahli2Name} onChange={e => setSignatories04B({...signatories04B, ahli2Name: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="No. Kad Pengenalan" value={signatories04B.ahli2Ic} onChange={e => setSignatories04B({...signatories04B, ahli2Ic: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={signatories04B.ahli2Date} onChange={e => setSignatories04B({...signatories04B, ahli2Date: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">PENGERUSI (PANEL)</span>
+                            <input type="text" placeholder="Nama Penuh" value={signatories04B.chairName} onChange={e => setSignatories04B({...signatories04B, chairName: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="No. Kad Pengenalan" value={signatories04B.chairIc} onChange={e => setSignatories04B({...signatories04B, chairIc: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={signatories04B.chairDate} onChange={e => setSignatories04B({...signatories04B, chairDate: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end pt-2 border-t">
+                  <button type="button" onClick={() => setShowPrintCenterModal(false)} className="px-4 py-1.5 text-xs font-bold bg-slate-800 text-white rounded hover:bg-slate-700">
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              TEMPLAT CETAKAN RASMI JPK (DIPAPARKAN KHUSUS SEMASA PRINT / PDF)
+          ===================================================================== */}
+          <div id="jpk-print-suite">
+            {(() => {
+              const skpkTitleStr = selectedPrograms.map(p => p.title).join(" + ");
+              const skpkCodeStr = selectedPrograms.map(p => formatSkpkCodeWithTahap(p.code, p.tahap)).join(" | ");
+
+              // Komponen Kepala Surat Rasmi JPK + Kotak Muka Surat Pepenjuru (Rajah 2 & Rajah 3)
+              const renderJpkHeader = (formTitle, docCode, pageText = "") => (
+                <div className="mb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="w-36"></div>
+                    <div className="text-center flex-1">
+                      <img
+                        src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/Coat_of_arms_of_Malaysia.svg/120px-Coat_of_arms_of_Malaysia.svg.png"
+                        alt="Jata Negara"
+                        className="h-11 mx-auto mb-1 object-contain"
+                      />
+                      <div className="font-bold text-[10pt] tracking-wide uppercase">JABATAN PEMBANGUNAN KEMAHIRAN (JPK)</div>
+                      <div className="font-bold text-[9.5pt] tracking-wide uppercase">KEMENTERIAN SUMBER MANUSIA</div>
+                    </div>
+                    <div className="w-40 flex flex-col items-end">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[8pt] font-semibold">Muka Surat</span>
+                        <div
+                          className="w-24 h-7 border-[1.5px] border-black relative flex items-center justify-center font-bold text-[8pt]"
+                          style={{
+                            background: "linear-gradient(to top left, transparent calc(50% - 0.8px), #000 50%, transparent calc(50% + 0.8px))"
+                          }}
+                        >
+                          {pageText && (
+                            <span className="bg-white/90 px-1 text-[7.5pt] font-mono">{pageText}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="font-bold text-[8pt] mt-0.5 tracking-tight">{docCode}</div>
+                    </div>
+                  </div>
+
+                  <div className="text-center font-bold text-[9pt] uppercase mt-1.5 mb-2">
+                    {formTitle}
+                  </div>
+
+                  <table className="w-full text-[8pt] mb-1.5">
+                    <tbody>
+                      <tr>
+                        <td className="font-bold w-40 py-0.5">NAMA AGENSI</td>
+                        <td className="font-bold w-3 py-0.5">:</td>
+                        <td className="font-bold uppercase py-0.5" colSpan="4">{agencyName}</td>
+                      </tr>
+                      <tr>
+                        <td className="font-bold w-40 py-0.5">NAMA PROGRAM AGENSI</td>
+                        <td className="font-bold w-3 py-0.5">:</td>
+                        <td className="font-bold uppercase py-0.5 pr-4">{programName}</td>
+                        <td className="font-bold w-36 py-0.5">TAJUK SKPK (NOSS)</td>
+                        <td className="font-bold w-3 py-0.5">:</td>
+                        <td className="font-bold uppercase py-0.5">{skpkTitleStr}</td>
+                      </tr>
+                      <tr>
+                        <td className="font-bold w-40 py-0.5">KOD PROGRAM AGENSI</td>
+                        <td className="font-bold w-3 py-0.5">:</td>
+                        <td className="font-bold uppercase py-0.5 pr-4">{programCode || "-"}</td>
+                        <td className="font-bold w-36 py-0.5">KOD SKPK (NOSS)</td>
+                        <td className="font-bold w-3 py-0.5">:</td>
+                        <td className="font-bold uppercase py-0.5">{skpkCodeStr}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+
+              // Kumpulkan semua CU merentasi program terpilih
+              const allCUsFlat = [];
+              selectedPrograms.forEach(prog => {
+                (prog.cus || []).forEach(cu => {
+                  allCUsFlat.push({ prog, cu });
+                });
+              });
+
+              // Kira jumlah keseluruhan jam & peratusan untuk JPK 04-A dan 04-B
+              let grandTotalPct = 0;
+              let grandNossRk = 0;
+              let grandNossRs = 0;
+              let grandAgensiRk = 0;
+              let grandAgensiRs = 0;
+
+              allCUsFlat.forEach(({ prog, cu }) => {
+                const cuKey = `${prog.code}-${cu.id}`;
+                const st = allCuStats[cuKey] || { pct: 0 };
+                grandTotalPct += st.pct;
+                grandNossRk += cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
+                grandNossRs += cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
+                modules.forEach(m => {
+                  m.subModules.forEach(sm => {
+                    if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
+                      grandAgensiRk += Number(sm.rkHours) || 0;
+                      grandAgensiRs += Number(sm.rsHours) || 0;
+                    }
+                  });
+                });
+              });
+              const overallAvgPct = allCUsFlat.length > 0 ? (grandTotalPct / allCUsFlat.length).toFixed(2) : "0.00";
+
+              return (
+                <>
+                  {/* ===========================================================
+                      SET 1: JPK/PEMETAAN/02-A (MATRIKS PEMETAAN - PECAHAN IKUT CU)
+                  =========================================================== */}
+                  {(printFilter === "ALL" || printFilter === "02A") && allCUsFlat.map(({ prog, cu }, cuIdx) => {
+                    const cuKey = `${prog.code}-${cu.id}`;
+                    const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0 };
+                    const tahapNum = cleanTahapNumber(prog.tahap);
+
+                    return (
+                      <div key={`p02-${cuKey}`} className="jpk-page-break">
+                        {renderJpkHeader(
+                          "BORANG MATRIKS PEMETAAN KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
+                          "JPK/PEMETAAN/02-A",
+                          `${cuIdx + 1} / ${allCUsFlat.length}`
+                        )}
+
+                        <table className="jpk-table">
+                          <thead>
+                            <tr>
+                              <th
+                                rowSpan="3"
+                                colSpan="2"
+                                className="w-64 text-left align-bottom relative"
+                                style={{
+                                  background: "linear-gradient(to top right, transparent calc(50% - 0.8px), #000 50%, transparent calc(50% + 0.8px))"
+                                }}
+                              >
+                                <div className="flex flex-col justify-between h-24">
+                                  <span className="text-right font-bold text-[7pt] pr-1">SKPK (NOSS)</span>
+                                  <span className="text-left font-bold text-[7pt] pl-1">MODUL / KURIKULUM AGENSI</span>
+                                </div>
+                              </th>
+                              {cu.was.map(wa => (
+                                <th key={wa.id} className="text-center p-1 w-10">
+                                  <div className="jpk-va-header">
+                                    <strong>{wa.id}.</strong> {wa.title}
+                                  </div>
+                                </th>
+                              ))}
+                            </tr>
+                            <tr className="bg-slate-100">
+                              <th colSpan={cu.was.length} className="text-left font-bold text-[7.5pt]">
+                                {isMultiProgram ? `[${prog.code}] ` : ""}{cu.id}: {cu.title}
+                              </th>
+                            </tr>
+                            <tr className="bg-slate-50">
+                              {cu.was.map(wa => (
+                                <th key={`t-${wa.id}`} className="text-center font-bold text-[7pt]">
+                                  T{tahapNum}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {modules.map((mod, mIdx) => (
+                              <React.Fragment key={`m02-${mod.id}`}>
+                                <tr className="bg-slate-100 font-bold">
+                                  <td className="text-center w-8">{mIdx + 1}</td>
+                                  <td>{mod.code} - {mod.title}</td>
+                                  {cu.was.map(wa => (
+                                    <td key={`mc-${wa.id}`} className="bg-slate-200/50"></td>
+                                  ))}
+                                </tr>
+                                {(mod.subModules || []).map((sm, sIdx) => (
+                                  <tr key={`sm02-${sm.subId}`}>
+                                    <td className="text-center font-mono text-[7pt]">{mIdx + 1}.{sIdx + 1}</td>
+                                    <td className="pl-3">{sm.code}: {sm.name}</td>
+                                    {cu.was.map(wa => {
+                                      const gId = `${cu.id}-${wa.id}`;
+                                      const fullId = `${prog.code}-${gId}`;
+                                      const isTicked = (sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullId);
+                                      return (
+                                        <td key={`cell-${wa.id}`} className="text-center font-bold text-[8.5pt]">
+                                          {isTicked ? "X" : ""}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            ))}
+                            <tr className="bg-slate-100 font-bold">
+                              <td colSpan="2" className="text-right">BILANGAN WA DIPENUHI (%) :</td>
+                              <td colSpan={cu.was.length} className="text-center">
+                                {st.metWA} / {st.totalWA} ({st.pct}%)
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+
+                  {/* ===========================================================
+                      SET 2: JPK/PEMETAAN/03 (PADANAN KANDUNGAN - PECAHAN SETIAP CU)
+                  =========================================================== */}
+                  {(printFilter === "ALL" || printFilter === "03") && allCUsFlat.map(({ prog, cu }, cuIdx) => {
+                    const cuKey = `${prog.code}-${cu.id}`;
+                    // Anggaran bilangan muka surat bagi CU ini (~5 WA per halaman A4 Landscape)
+                    const estPagesInCu = Math.max(1, Math.ceil(cu.was.length / 5));
+
+                    return (
+                      <div key={`p03-${cuKey}`} className="jpk-page-break">
+                        {renderJpkHeader(
+                          "BORANG PEMETAAN KANDUNGAN KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
+                          "JPK/PEMETAAN/03",
+                          estPagesInCu === 1 ? "1 / 1" : `1 / ${estPagesInCu}`
+                        )}
+
+                        <table className="jpk-table">
+                          <thead>
+                            <tr className="bg-slate-100 font-bold">
+                              <th colSpan="11" className="text-left text-[8pt]">
+                                CU : {cu.id} - {cu.title} {isMultiProgram ? `(${prog.code})` : ""}
+                              </th>
+                            </tr>
+                            <tr className="bg-slate-100 font-bold text-center">
+                              <th colSpan="3">CURRICULUM OF COMPETENCY UNIT (COCU) / TASK PROFILE</th>
+                              <th colSpan="5">KURIKULUM PROGRAM AGENSI</th>
+                              <th colSpan="2">Memenuhi NOSS (Tandakan /)</th>
+                              <th rowSpan="2" className="w-32">CATATAN (GAP)</th>
+                            </tr>
+                            <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                              <th className="w-24">Work Activities (WA)</th>
+                              <th className="w-36">Related Knowledge</th>
+                              <th className="w-36">Applied Skills</th>
+                              <th className="w-24">Module</th>
+                              <th className="w-32">Knowledge / Sub Topic</th>
+                              <th className="w-12">Training Duration</th>
+                              <th className="w-32">Applied Skills</th>
+                              <th className="w-12">Training Duration</th>
+                              <th className="w-9">Ya</th>
+                              <th className="w-9">Tidak</th>
+                            </tr>
+                          </thead>
+                          {cu.was.map(wa => {
+                            const gId = `${cu.id}-${wa.id}`;
+                            const fullWaKey = `${prog.code}-${gId}`;
+                            const matchingSubs = [];
+                            modules.forEach(m => {
+                              m.subModules.forEach(sm => {
+                                if ((sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullWaKey)) {
+                                  matchingSubs.push({ mod: m, sub: sm });
+                                }
+                              });
+                            });
+                            const defaultFulfilled = matchingSubs.length > 0;
+                            const isFulfilled = manualCompliance[fullWaKey] !== undefined ? manualCompliance[fullWaKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultFulfilled);
+                            const remarkText = gapRemarks[fullWaKey] !== undefined ? gapRemarks[fullWaKey] : (gapRemarks[gId] !== undefined ? gapRemarks[gId] : (isFulfilled ? "Memenuhi standard minimum." : "Kandungan tiada dalam modul agensi."));
+                            const isMultiSub = matchingSubs.length > 1;
+
+                            return (
+                              <tbody key={`p03-wa-${wa.id}`} className={isMultiSub ? "jpk-wa-multi" : "jpk-wa-single"}>
+                                <tr>
+                                  <td className="text-left">
+                                    <div className="font-bold">{wa.id}</div>
+                                    <div className="text-[7pt] mt-0.5">{wa.title}</div>
+                                  </td>
+                                  <td>
+                                    <div>{wa.rk}</div>
+                                    <div className="font-bold mt-1">({wa.rkHours} Jam)</div>
+                                  </td>
+                                  <td>
+                                    <div>{wa.rs}</div>
+                                    <div className="font-bold mt-1">({wa.rsHours} Jam)</div>
+                                  </td>
+
+                                  {matchingSubs.length > 0 ? (
+                                    <>
+                                      <td>
+                                        <div className="font-bold">{matchingSubs[0].mod.code}</div>
+                                        <div>{matchingSubs[0].sub.name}</div>
+                                      </td>
+                                      <td>{matchingSubs[0].sub.knowledge}</td>
+                                      <td className="text-center font-bold">{matchingSubs[0].sub.rkHours} Jam</td>
+                                      <td>{matchingSubs[0].sub.skills}</td>
+                                      <td className="text-center font-bold">{matchingSubs[0].sub.rsHours} Jam</td>
+                                    </>
+                                  ) : (
+                                    <td colSpan="5" className="text-center italic text-slate-600">Tiada modul agensi dipadankan</td>
+                                  )}
+
+                                  <td className="text-center font-bold text-[9pt]">{isFulfilled ? "/" : ""}</td>
+                                  <td className="text-center font-bold text-[9pt]">{!isFulfilled ? "/" : ""}</td>
+                                  <td>{remarkText}</td>
+                                </tr>
+
+                                {matchingSubs.slice(1).map((item, sIdx) => (
+                                  <tr key={`p03-sub-${sIdx}`}>
+                                    <td className="text-left bg-slate-50">
+                                      <div className="font-bold text-[7pt]">{wa.id} (Samb.)</div>
+                                    </td>
+                                    <td className="bg-slate-50 text-[6.5pt] italic text-slate-500">Rujuk {wa.id}</td>
+                                    <td className="bg-slate-50 text-[6.5pt] italic text-slate-500">Rujuk {wa.id}</td>
+                                    <td>
+                                      <div className="font-bold">{item.mod.code}</div>
+                                      <div>{item.sub.name}</div>
+                                    </td>
+                                    <td>{item.sub.knowledge}</td>
+                                    <td className="text-center font-bold">{item.sub.rkHours} Jam</td>
+                                    <td>{item.sub.skills}</td>
+                                    <td className="text-center font-bold">{item.sub.rsHours} Jam</td>
+                                    <td className="text-center font-bold">{isFulfilled ? "/" : ""}</td>
+                                    <td className="text-center font-bold">{!isFulfilled ? "/" : ""}</td>
+                                    <td></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            );
+                          })}
+                        </table>
+                      </div>
+                    );
+                  })}
+
+                  {/* ===========================================================
+                      SET 3: JPK/PEMETAAN/04-A (BORANG RUMUSAN PEMETAAN KENDIRI AGENSI)
+                  =========================================================== */}
+                  {(printFilter === "ALL" || printFilter === "04AB") && (
+                    <div className="jpk-page-break">
+                      {renderJpkHeader(
+                        "BORANG RUMUSAN PEMETAAN KENDIRI KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
+                        "JPK/PEMETAAN/04-A",
+                        "1 / 1"
+                      )}
+
+                      {/* Jadual Bahagian 1: Pecahan CU */}
+                      <table className="jpk-table mb-2">
+                        <thead>
+                          <tr className="bg-slate-100 font-bold text-center">
+                            <th rowSpan="2" className="w-28">CU/DUTY</th>
+                            <th rowSpan="2" className="w-16">BIL WORK ACTIVITY (WA)/TASK (A)</th>
+                            <th rowSpan="2" className="w-16">BIL WA/TASK DIPENUHI (B)</th>
+                            <th rowSpan="2" className="w-20">% WA/TASK DIPENUHI [(B/A)*100]</th>
+                            <th rowSpan="2" className="w-28">NAMA WA/TASK TIDAK DIPENUHI</th>
+                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                            <th rowSpan="2">CADANGAN JAWATANKUASA PEMETAAN</th>
+                          </tr>
+                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                            <th className="w-28">SKPK (NOSS)</th>
+                            <th className="w-28">KURIKULUM AGENSI</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allCUsFlat.map(({ prog, cu }) => {
+                            const cuKey = `${prog.code}-${cu.id}`;
+                            const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
+                            const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
+                            const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
+                            let agRkH = 0, agRsH = 0;
+                            modules.forEach(m => m.subModules.forEach(sm => {
+                              if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
+                                agRkH += Number(sm.rkHours) || 0;
+                                agRsH += Number(sm.rsHours) || 0;
+                              }
+                            }));
+
+                            return (
+                              <tr key={`p04a-${cuKey}`}>
+                                <td className="font-bold">{cu.id}: {cu.title}</td>
+                                <td className="text-center">{st.totalWA}</td>
+                                <td className="text-center">{st.metWA}</td>
+                                <td className="text-center font-bold">{st.pct}%</td>
+                                <td className="text-center">{st.missingWAs.length === 0 ? "-" : st.missingWAs.map(w => w.id).join(", ")}</td>
+                                <td className="text-[7pt]">
+                                  <div>Knowledge = {nossRkH} Hours</div>
+                                  <div>Skills = {nossRsH} Hours</div>
+                                </td>
+                                <td className="text-[7pt]">
+                                  <div>Knowledge = {agRkH} Hours</div>
+                                  <div>Skills = {agRsH} Hours</div>
+                                </td>
+                                <td>{committeeRemarks[cuKey] || ""}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-slate-100 font-bold">
+                            <td colSpan="3" className="text-right">JUMLAH % KESELURUHAN :</td>
+                            <td className="text-center">{overallAvgPct}%</td>
+                            <td colSpan="4" className="text-[6.5pt] font-normal italic">(Formula: Jumlah % WA dipenuhi / bilangan CU)</td>
+                          </tr>
+                        </tbody>
+                      </table>
+
+                      {/* Jadual Bahagian 2: Rumusan Keseluruhan Program Agensi */}
+                      <table className="jpk-table mb-2">
+                        <thead>
+                          <tr className="bg-slate-100 font-bold text-center">
+                            <th rowSpan="2" className="w-64">PROGRAM AGENSI (SILIBUS/MODUL/KURIKULUM)</th>
+                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                            <th rowSpan="2">CADANGAN JAWATANKUASA PEMETAAN</th>
+                          </tr>
+                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                            <th className="w-32">SKPK (NOSS)</th>
+                            <th className="w-32">KURIKULUM AGENSI</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>
+                              {modules.length > 0 ? (
+                                <ol className="list-decimal pl-4 space-y-0.5 text-[7pt]">
+                                  {modules.map(m => <li key={m.id}>{m.code}: {m.title}</li>)}
+                                </ol>
+                              ) : "-"}
+                            </td>
+                            <td className="text-[7pt]">
+                              <div>Knowledge = {grandNossRk} Hours</div>
+                              <div>Skills = {grandNossRs} Hours</div>
+                            </td>
+                            <td className="text-[7pt]">
+                              <div>Knowledge = {grandAgensiRk} Hours</div>
+                              <div>Skills = {grandAgensiRs} Hours</div>
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tbody>
+                      </table>
+
+                      {/* Ulasan Keseluruhan & Tandatangan Pengesahan JPK 04-A */}
+                      <div className="jpk-sign-box space-y-2">
+                        <table className="jpk-table">
+                          <tbody>
+                            <tr>
+                              <td className="font-bold bg-slate-100">ULASAN KESELURUHAN JAWATANKUASA PEMETAAN KENDIRI AGENSI :</td>
+                            </tr>
+                            <tr>
+                              <td className="h-12">{overallRemarks04A}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+
+                        <div className="font-bold text-[8pt] pt-1">PENGESAHAN JAWATANKUASA PEMETAAN KENDIRI AGENSI</div>
+                        <table className="jpk-table">
+                          <tbody>
+                            <tr>
+                              <td className="w-1/3 p-2">
+                                <div className="font-bold text-center mb-8">(AHLI 1)</div>
+                                <div>TANDATANGAN : ________________________</div>
+                                <div className="mt-1">NAMA : {signatories04A.ahli1Name || "_________________________________"}</div>
+                                <div className="mt-1">NO KAD PENGENALAN : {signatories04A.ahli1Ic || "____________________"}</div>
+                                <div className="mt-1">TARIKH : {signatories04A.ahli1Date || "_______________________________"}</div>
+                              </td>
+                              <td className="w-1/3 p-2">
+                                <div className="font-bold text-center mb-8">(AHLI 2)</div>
+                                <div>TANDATANGAN : ________________________</div>
+                                <div className="mt-1">NAMA : {signatories04A.ahli2Name || "_________________________________"}</div>
+                                <div className="mt-1">NO KAD PENGENALAN : {signatories04A.ahli2Ic || "____________________"}</div>
+                                <div className="mt-1">TARIKH : {signatories04A.ahli2Date || "_______________________________"}</div>
+                              </td>
+                              <td className="w-1/3 p-2">
+                                <div className="font-bold text-center mb-8">(PENGERUSI)</div>
+                                <div>TANDATANGAN : ________________________</div>
+                                <div className="mt-1">NAMA : {signatories04A.chairName || "_________________________________"}</div>
+                                <div className="mt-1">NO KAD PENGENALAN : {signatories04A.chairIc || "____________________"}</div>
+                                <div className="mt-1">TARIKH : {signatories04A.chairDate || "_______________________________"}</div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ===========================================================
+                      SET 4: JPK/PEMETAAN/04-B (BORANG RUMUSAN PANEL PENILAI PPPPA)
+                  =========================================================== */}
+                  {(printFilter === "ALL" || printFilter === "04AB") && (
+                    <div className="jpk-page-break">
+                      {renderJpkHeader(
+                        "BORANG RUMUSAN PEMETAAN KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
+                        "JPK/PEMETAAN/04-B",
+                        "1 / 1"
+                      )}
+
+                      {/* Jadual Bahagian 1: Pecahan CU */}
+                      <table className="jpk-table mb-2">
+                        <thead>
+                          <tr className="bg-slate-100 font-bold text-center">
+                            <th rowSpan="2" className="w-28">CU/DUTY</th>
+                            <th rowSpan="2" className="w-16">BIL WORK ACTIVITY (WA)/TASK (A)</th>
+                            <th rowSpan="2" className="w-16">BIL WA/TASK DIPENUHI (B)</th>
+                            <th rowSpan="2" className="w-20">% WA/TASK DIPENUHI [(B/A)*100]</th>
+                            <th rowSpan="2" className="w-28">NAMA WA/TASK TIDAK DIPENUHI</th>
+                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                            <th rowSpan="2">ULASAN PANEL JAWATANKUASA PENILAIAN PEMETAAN PROGRAM KEMAHIRAN</th>
+                          </tr>
+                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                            <th className="w-28">SKPK (NOSS)</th>
+                            <th className="w-28">KURIKULUM AGENSI</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {allCUsFlat.map(({ prog, cu }) => {
+                            const cuKey = `${prog.code}-${cu.id}`;
+                            const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
+                            const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
+                            const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
+                            let agRkH = 0, agRsH = 0;
+                            modules.forEach(m => m.subModules.forEach(sm => {
+                              if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
+                                agRkH += Number(sm.rkHours) || 0;
+                                agRsH += Number(sm.rsHours) || 0;
+                              }
+                            }));
+
+                            return (
+                              <tr key={`p04b-${cuKey}`}>
+                                <td className="font-bold">{cu.id}: {cu.title}</td>
+                                <td className="text-center">{st.totalWA}</td>
+                                <td className="text-center">{st.metWA}</td>
+                                <td className="text-center font-bold">{st.pct}%</td>
+                                <td className="text-center">{st.missingWAs.length === 0 ? "-" : st.missingWAs.map(w => w.id).join(", ")}</td>
+                                <td className="text-[7pt]">
+                                  <div>Knowledge = {nossRkH} Hours</div>
+                                  <div>Skills = {nossRsH} Hours</div>
+                                </td>
+                                <td className="text-[7pt]">
+                                  <div>Knowledge = {agRkH} Hours</div>
+                                  <div>Skills = {agRsH} Hours</div>
+                                </td>
+                                <td>{committeeRemarks[cuKey] || ""}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-slate-100 font-bold">
+                            <td colSpan="3" className="text-right">JUMLAH % KESELURUHAN :</td>
+                            <td className="text-center">{overallAvgPct}%</td>
+                            <td colSpan="4" className="text-[6.5pt] font-normal italic">(Formula: Jumlah % WA dipenuhi / bilangan CU)</td>
+                          </tr>
+                        </tbody>
+                      </table>
+
+                      {/* Jadual Bahagian 2: Rumusan Keseluruhan Program Agensi */}
+                      <table className="jpk-table mb-2">
+                        <thead>
+                          <tr className="bg-slate-100 font-bold text-center">
+                            <th rowSpan="2" className="w-64">PROGRAM AGENSI (SILIBUS/MODUL/KURIKULUM)</th>
+                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                            <th rowSpan="2">ULASAN PANEL JAWATANKUASA PENILAIAN PEMETAAN PROGRAM KEMAHIRAN</th>
+                          </tr>
+                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                            <th className="w-32">SKPK (NOSS)</th>
+                            <th className="w-32">KURIKULUM AGENSI</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>
+                              {modules.length > 0 ? (
+                                <ol className="list-decimal pl-4 space-y-0.5 text-[7pt]">
+                                  {modules.map(m => <li key={m.id}>{m.code}: {m.title}</li>)}
+                                </ol>
+                              ) : "-"}
+                            </td>
+                            <td className="text-[7pt]">
+                              <div>Knowledge = {grandNossRk} Hours</div>
+                              <div>Skills = {grandNossRs} Hours</div>
+                            </td>
+                            <td className="text-[7pt]">
+                              <div>Knowledge = {grandAgensiRk} Hours</div>
+                              <div>Skills = {grandAgensiRs} Hours</div>
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tbody>
+                      </table>
+
+                      {/* Ulasan Keseluruhan, Syor Panel PPPPA & Tandatangan Pengesahan JPK 04-B */}
+                      <div className="jpk-sign-box space-y-2">
+                        <table className="jpk-table">
+                          <tbody>
+                            <tr>
+                              <td className="font-bold bg-slate-100">ULASAN KESELURUHAN :</td>
+                            </tr>
+                            <tr>
+                              <td className="h-10">{overallRemarks04B}</td>
+                            </tr>
+                            <tr>
+                              <td className="p-2">
+                                <div className="font-bold mb-1">SYOR PANEL PENILAI PEMETAAN PROGRAM AGENSI (PPPPA):</div>
+                                <div className="mb-1.5">Dengan ini Panel Penilai Pemetaan Program Agensi</div>
+                                <div className="flex items-center gap-6 font-bold mb-1.5">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "MEMPERAKU" ? "✓" : ""}</span>
+                                    <span>MEMPERAKU</span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "BERSYARAT" ? "✓" : ""}</span>
+                                    <span>MEMPERAKU SECARA BERSYARAT</span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "TIDAK" ? "✓" : ""}</span>
+                                    <span>TIDAK MEMPERAKU</span>
+                                  </span>
+                                </div>
+                                <div>
+                                  hasil pemetaan ini bagi program Agensi <strong>{programName}</strong> memenuhi NOSS <strong>{skpkCodeStr} - {skpkTitleStr}</strong>
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+
+                        <div className="font-bold text-[8pt] pt-1">PENGESAHAN PANEL PENILAI PEMETAAN PROGRAM AGENSI (PPPPA)</div>
+                        <table className="jpk-table">
+                          <tbody>
+                            <tr>
+                              <td className="w-1/3 p-2">
+                                <div className="font-bold text-center mb-8">(AHLI 1)</div>
+                                <div>TANDATANGAN : ________________________</div>
+                                <div className="mt-1">NAMA : {signatories04B.ahli1Name || "_________________________________"}</div>
+                                <div className="mt-1">NO KAD PENGENALAN : {signatories04B.ahli1Ic || "____________________"}</div>
+                                <div className="mt-1">TARIKH : {signatories04B.ahli1Date || "_______________________________"}</div>
+                              </td>
+                              <td className="w-1/3 p-2">
+                                <div className="font-bold text-center mb-8">(AHLI 2)</div>
+                                <div>TANDATANGAN : ________________________</div>
+                                <div className="mt-1">NAMA : {signatories04B.ahli2Name || "_________________________________"}</div>
+                                <div className="mt-1">NO KAD PENGENALAN : {signatories04B.ahli2Ic || "____________________"}</div>
+                                <div className="mt-1">TARIKH : {signatories04B.ahli2Date || "_______________________________"}</div>
+                              </td>
+                              <td className="w-1/3 p-2">
+                                <div className="font-bold text-center mb-8">(PENGERUSI)</div>
+                                <div>TANDATANGAN : ________________________</div>
+                                <div className="mt-1">NAMA : {signatories04B.chairName || "_________________________________"}</div>
+                                <div className="mt-1">NO KAD PENGENALAN : {signatories04B.chairIc || "____________________"}</div>
+                                <div className="mt-1">TARIKH : {signatories04B.chairDate || "_______________________________"}</div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
         </div>
       );
     }

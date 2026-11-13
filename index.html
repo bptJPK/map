@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sistem Pemetaan Kurikulum & SKPK (NOSS)</title>
+  <title>Pemetaan NOSS & Modul Agensi</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React & ReactDOM -->
@@ -55,24 +55,27 @@
       .jpk-va-header {
         writing-mode: vertical-rl;
         transform: rotate(180deg);
-        white-space: nowrap;
-        height: 95px;
-        max-height: 95px;
-        font-size: 7pt;
-        line-height: 1.1;
+        white-space: normal;
+        word-break: break-word;
+        height: 125px;
+        max-height: 125px;
+        width: 100%;
+        line-height: 1.12;
         text-align: left;
         margin: 0 auto;
-        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
       }
     }
     #jpk-print-suite { display: none; }
     .print-only { display: none; }
     .print-show-col { display: none; }
 
-    /* Sticky Positions Left with 100% Solid Opaque Backgrounds to prevent ghosting */
+    /* Sticky Positions Left with 100% Solid Opaque Backgrounds & Clean Divider */
     .sticky-c1 { position: sticky; left: 0px; z-index: 25; }
     .sticky-c2 { position: sticky; left: 44px; z-index: 25; }
-    .sticky-c3 { position: sticky; left: 324px; z-index: 25; }
+    .sticky-c3 { position: sticky; left: 324px; z-index: 25; box-shadow: 2px 0 0 #cbd5e1; }
 
     /* Solid Opaque Background Classes (No transparency bleeding) */
     .bg-solid-white { background-color: #ffffff !important; }
@@ -82,20 +85,22 @@
     .bg-solid-header-dark { background-color: #0f172a !important; }
     .bg-solid-cu-dark { background-color: #1e293b !important; }
 
-    /* Vertical Text Rotation for WA Headers */
+    /* Vertical Text Rotation for WA Headers (Wrap + Adaptive Font) */
     .wa-vertical-title {
       writing-mode: vertical-rl;
       transform: rotate(180deg);
-      white-space: nowrap;
+      white-space: normal;
+      word-break: break-word;
       text-orientation: mixed;
-      height: 110px;
-      max-height: 110px;
+      height: 132px;
+      max-height: 132px;
+      width: 100%;
       margin: 0 auto;
       text-align: left;
-      font-size: 10px;
-      line-height: 1.15;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      line-height: 1.12;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
     }
 
     /* Scroll styling */
@@ -258,9 +263,9 @@
       const [showAddProgramDropdown, setShowAddProgramDropdown] = useState(false);
 
       // MAKLUMAT AGENSI & PROGRAM BOLEH DISUNTING (TAB 2)
-      const [agencyName, setAgencyName] = useState("KOLEJ KEMAHIRAN VOKASIONAL SERI ISKANDAR");
-      const [programName, setProgramName] = useState("DIPLOMA TEKNOLOGI KIMPALAN & FABRIKASI");
-      const [programCode, setProgramCode] = useState("DKM-MC024");
+      const [agencyName, setAgencyName] = useState("");
+      const [programName, setProgramName] = useState("");
+      const [programCode, setProgramCode] = useState("");
       const [showPrintCenterModal, setShowPrintCenterModal] = useState(false);
       const [showSignConfig, setShowSignConfig] = useState(false);
       const [isExportingZip, setIsExportingZip] = useState(false);
@@ -268,6 +273,15 @@
       const [overallRemarks04A, setOverallRemarks04A] = useState("");
       const [overallRemarks04B, setOverallRemarks04B] = useState("");
       const [panelRecommendation04B, setPanelRecommendation04B] = useState(""); // "" | "MEMPERAKU" | "BERSYARAT" | "TIDAK"
+      const [waContentCoverage, setWaContentCoverage] = useState({}); // { [fullWaKey]: { rkPct: number, rsPct: number } }
+      const [jktMeetingNo, setJktMeetingNo] = useState("");
+      const [jktMeetingDate, setJktMeetingDate] = useState("");
+      const [jktPanelSyors, setJktPanelSyors] = useState({}); // { [progCode]: { syor: string, keputusan: string, catatan: string } }
+      const [jktSignatories, setJktSignatories] = useState({
+        ahli1Name: "", ahli1Role: "", ahli1Date: "",
+        chairName: "", chairRole: "", chairDate: "",
+        ahli2Name: "", ahli2Role: "", ahli2Date: ""
+      });
       const [signatories04A, setSignatories04A] = useState({
         ahli1Name: "", ahli1Ic: "", ahli1Date: "",
         ahli2Name: "", ahli2Ic: "", ahli2Date: "",
@@ -336,6 +350,7 @@
               manualCompliance,
               gapRemarks,
               committeeRemarks,
+              waContentCoverage,
               agencyName,
               programName,
               programCode
@@ -378,6 +393,7 @@
             if (d.manualCompliance) setManualCompliance(d.manualCompliance);
             if (d.gapRemarks) setGapRemarks(d.gapRemarks);
             if (d.committeeRemarks) setCommitteeRemarks(d.committeeRemarks);
+            if (d.waContentCoverage) setWaContentCoverage(d.waContentCoverage);
             if (d.agencyName) setAgencyName(d.agencyName);
             if (d.programName) setProgramName(d.programName);
             if (d.programCode) setProgramCode(d.programCode);
@@ -599,6 +615,8 @@
       
       const [showFullWA, setShowFullWA] = useState(true);
       const [showSubModules, setShowSubModules] = useState(true);
+      const [collapsedTab2CUs, setCollapsedTab2CUs] = useState({});
+      const [showTab2RkRs, setShowTab2RkRs] = useState(true);
       const [focusMode, setFocusMode] = useState(false);
       const [hoveredWA, setHoveredWA] = useState(null);
 
@@ -673,7 +691,7 @@
         return () => {
           if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
-      }, [modules, manualCompliance, gapRemarks, committeeRemarks, agencyName, programName, selectedNossCodes, userRole]);
+      }, [modules, manualCompliance, gapRemarks, committeeRemarks, waContentCoverage, agencyName, programName, programCode, selectedNossCodes, userRole]);
 
       // 2. AUTO-SYNC PERIODIK (SEMAK & TARIK KEMASKINI RAKAN KOLABORATOR SECARA SENYAP SETIAP 30 SAAT)
       useEffect(() => {
@@ -931,8 +949,8 @@
       };
 
       // Pelarasan tepat ketinggian header untuk mematri celah (tiada bayang tembus semasa skrol)
-      const r2Top = showFullWA ? "top-[112px]" : "top-[36px]";
-      const r3Top = showFullWA ? "top-[152px]" : "top-[76px]";
+      const r2Top = showFullWA ? "top-[136px]" : "top-[36px]";
+      const r3Top = showFullWA ? "top-[194px]" : "top-[94px]";
 
       const handleFileUpload = (e) => {
         const file = e.target.files[0];
@@ -1462,6 +1480,35 @@
                   </>
                 )}
 
+                {activeTab === 'tab2' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const allKeys = [];
+                        selectedPrograms.forEach(p => (p.cus || []).forEach(c => allKeys.push(`${p.code}-${c.id}`)));
+                        const anyOpen = allKeys.some(k => collapsedTab2CUs[k] === false);
+                        const nextMap = {};
+                        allKeys.forEach(k => { nextMap[k] = anyOpen; });
+                        setCollapsedTab2CUs(nextMap);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-medium transition"
+                      title="Kembang atau kuncupkan semua perincian jadual CU di bawah"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7"/></svg>
+                      {selectedPrograms.some(p => (p.cus || []).some(c => collapsedTab2CUs[`${p.code}-${c.id}`] === false)) ? "Kuncup Semua CU" : "Papar Semua CU"}
+                    </button>
+
+                    <button
+                      onClick={() => setShowTab2RkRs(!showTab2RkRs)}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md border font-medium transition ${showTab2RkRs ? 'bg-teal-50 border-teal-300 text-teal-800' : 'bg-slate-50 border-slate-300 text-slate-700'}`}
+                      title="Sembunyi atau papar lajur panjang Related Knowledge & Applied Skills SKPK"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                      {showTab2RkRs ? "Sembunyi RK/RS" : "Papar RK/RS"}
+                    </button>
+                  </>
+                )}
+
                 <button
                   onClick={() => setFocusMode(!focusMode)}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium transition"
@@ -1535,7 +1582,7 @@
                       
                       <thead>
                         {/* Baris 1: Header NO, MODUL & Header WA */}
-                        <tr style={{ height: showFullWA ? "112px" : "36px" }} className="bg-solid-header-dark text-slate-200 text-xs">
+                        <tr style={{ height: showFullWA ? "136px" : "36px" }} className="bg-solid-header-dark text-slate-200 text-xs">
                           <th style={{zIndex: 50, backgroundColor: "#0f172a"}} className="sticky-c1 top-0 p-2 text-center border-b border-r border-slate-700 font-bold text-slate-300 w-[44px] min-w-[44px]">
                             NO
                           </th>
@@ -1564,13 +1611,16 @@
                                 return (
                                   <th 
                                     key={`${prog.code}-${gId}`} 
-                                    className={`sticky top-0 z-30 border-b border-r border-slate-700 transition align-bottom ${isCovered ? 'bg-teal-900 text-teal-200 font-bold' : 'bg-slate-900 text-slate-300'} p-0 text-center w-[42px] min-w-[42px]`}
+                                    className={`sticky top-0 z-30 border-b border-r border-slate-700 transition align-bottom ${isCovered ? 'bg-teal-900 text-teal-200 font-bold' : 'bg-slate-900 text-slate-300'} px-0.5 py-0 text-center w-[54px] min-w-[54px] max-w-[54px]`}
                                     title={`${isMultiProgram ? prog.code + ' ' : ''}${cu.id}-${wa.id}: ${wa.title}`}
                                     onMouseEnter={() => setHoveredWA({ cuId: cu.id, waId: wa.id, title: wa.title, rk: wa.rk, rs: wa.rs, rkHours: wa.rkHours, rsHours: wa.rsHours, progCode: prog.code })}
-                                                                      >
+                                  >
                                     {showFullWA ? (
-                                      <div className="wa-vertical-title py-1">
-                                        <span className="font-bold text-amber-300">{wa.id}.</span> {wa.title}
+                                      <div
+                                        className="wa-vertical-title py-1.5"
+                                        style={{ fontSize: (wa.title || "").length > 65 ? "7.5px" : (wa.title || "").length > 38 ? "8.5px" : "9.5px" }}
+                                      >
+                                        <span><strong className="text-amber-300">{wa.id}.</strong> {wa.title}</span>
                                       </div>
                                     ) : (
                                       <div className="py-2 font-bold font-mono text-[10px] text-amber-400 text-center">
@@ -1584,9 +1634,9 @@
                           ))}
                         </tr>
 
-                        {/* Baris 2: CU / DUTY (DYNAMIC TOP OFFSET KEMAS) */}
-                        <tr style={{ height: "40px" }} className="bg-solid-cu-dark text-slate-100 text-xs border-b border-slate-700">
-                          <th colSpan="3" style={{zIndex: 50, backgroundColor: "#1e293b"}} className={`sticky-c1 ${r2Top} px-3 py-1.5 border-r border-slate-700 font-bold text-slate-300 text-right uppercase text-[11px]`}>
+                        {/* Baris 2: CU / DUTY (RUANG LEGA 58PX SUPAYA TAJUK CU TIDAK TERPOTONG) */}
+                        <tr style={{ height: "58px" }} className="bg-solid-cu-dark text-slate-100 text-xs border-b border-slate-700">
+                          <th colSpan="3" style={{zIndex: 50, backgroundColor: "#1e293b"}} style={{zIndex: 50, backgroundColor: "#1e293b", boxShadow: "2px 0 0 #334155"}} className={`sticky-c1 ${r2Top} px-3 py-1.5 border-r border-slate-700 font-bold text-slate-300 text-right uppercase text-[11px] align-middle`}>
                             CU / DUTY (UNIT KOMPETENSI SKPK)
                           </th>
 
@@ -1604,8 +1654,11 @@
                               if (isCollapsed) {
                                 return (
                                   <th key={cuKey} className={`sticky ${r2Top} z-30 ${cuBgClass} p-1 border-r border-slate-700 text-center font-bold`}>
-                                    <button onClick={() => toggleCUCollapse(cuKey)} className="hover:text-white flex items-center justify-center mx-auto text-[11px] gap-0.5">
-                                      <span>▶</span> {cu.id}
+                                    <button onClick={() => toggleCUCollapse(cuKey)} className="hover:text-white flex items-center justify-center mx-auto text-[11px] gap-0.5 bg-white/10 hover:bg-white/20 px-1.5 py-0.5 rounded transition" title="Kembangkan lajur CU ini">
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+                                      </svg>
+                                      <span>{cu.id}</span>
                                     </button>
                                   </th>
                                 );
@@ -1631,10 +1684,12 @@
                                     </div>
                                     <button 
                                       onClick={() => toggleCUCollapse(cuKey)} 
-                                      className="text-[10px] bg-slate-700/60 hover:bg-slate-600 px-1 py-0.5 rounded text-slate-200 shrink-0"
+                                      className="p-1 bg-white/10 hover:bg-white/25 border border-white/15 rounded text-slate-100 shrink-0 transition"
                                       title="Kuncupkan lajur CU ini"
                                     >
-                                      ◀
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+                                      </svg>
                                     </button>
                                   </div>
                                 </th>
@@ -1645,7 +1700,7 @@
 
                         {/* Baris 3: TAHAP (ANGKA SAHAJA - RINGKAS & JIMAT RUANG) */}
                         <tr style={{ height: "26px" }} className="bg-solid-cu-dark text-slate-400 text-[10px] border-b border-slate-600">
-                          <th colSpan="3" style={{zIndex: 50, backgroundColor: "#1e293b"}} className={`sticky-c1 ${r3Top} px-3 py-1 border-r border-slate-700 text-right font-medium`}>
+                          <th colSpan="3" style={{zIndex: 50, backgroundColor: "#1e293b"}} style={{zIndex: 50, backgroundColor: "#1e293b", boxShadow: "2px 0 0 #334155"}} className={`sticky-c1 ${r3Top} px-3 py-1 border-r border-slate-700 text-right font-medium`}>
                             TAHAP
                           </th>
                           {selectedPrograms.map(prog => {
@@ -1796,7 +1851,13 @@
                                               title={`Klik untuk padankan ${sm.name} dengan ${cu.id}-${wa.id}`}
                                               onMouseEnter={() => setHoveredWA({ cuId: cu.id, waId: wa.id, title: wa.title, rk: wa.rk, rs: wa.rs, rkHours: wa.rkHours, rsHours: wa.rsHours, progCode: prog.code, subName: sm.name, subCode: sm.code })}
                                             >
-                                              {isTicked && <span className="text-xs">X</span>}
+                                              {isTicked && (
+                                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-white/15 border border-white/30 text-white shadow-2xs mx-auto">
+                                                  <svg className="w-3.5 h-3.5 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                  </svg>
+                                                </span>
+                                              )}
                                             </td>
                                           );
                                         });
@@ -2013,49 +2074,62 @@
                     </div>
 
                   </div>
-                </div>
-
-                {/* 2. JADUAL RINGKASAN JPK 04-A (DENGAN PEMISAH PROGRAM JIKA BERBILANG) */}
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="bg-slate-800 text-white px-3 py-2 flex items-center justify-between no-print">
+                </div>{/* 2. JADUAL RINGKASAN ANALITIK & AKORDION PERINCIAN COCU BERSEPADU (UI TAB 2) */}
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden no-print">
+                  <div className="bg-slate-800 text-white px-3.5 py-2 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="font-bold text-xs uppercase tracking-wide flex items-center gap-2">
-                      <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                      JADUAL RINGKASAN PEMENUHAN WA & TEMPOH LATIHAN (BORANG JPK 04-A)
+                      <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                      RINGKASAN ANALITIK PEMENUHAN WA, KANDUNGAN & JAM LATIHAN (PANDUAN CADANGAN JK)
                       {isMultiProgram && (
                         <span className="text-[10px] bg-indigo-900 border border-indigo-400/40 text-indigo-200 px-2 py-0.2 rounded-full font-normal">
                           Gabungan {selectedPrograms.length} Program
                         </span>
                       )}
                     </h2>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setShowTab2RkRs(!showTab2RkRs)}
+                        className={`px-2 py-0.5 rounded border font-semibold transition ${showTab2RkRs ? 'bg-teal-600 border-teal-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-200'}`}
+                      >
+                        {showTab2RkRs ? "Sembunyi RK/RS" : "Papar RK/RS"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allKeys = [];
+                          selectedPrograms.forEach(p => (p.cus || []).forEach(c => allKeys.push(`${p.code}-${c.id}`)));
+                          const anyOpen = allKeys.some(k => collapsedTab2CUs[k] === false);
+                          const nextMap = {};
+                          allKeys.forEach(k => { nextMap[k] = anyOpen; });
+                          setCollapsedTab2CUs(nextMap);
+                        }}
+                        className="px-2 py-0.5 rounded border border-indigo-400/50 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition"
+                      >
+                        {selectedPrograms.some(p => (p.cus || []).some(c => collapsedTab2CUs[`${p.code}-${c.id}`] === false)) ? "▲ Kuncup Semua CU" : "▼ Papar Semua CU"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs print-table">
-                      <thead className="bg-slate-100 text-slate-700 border-b border-slate-300 font-bold">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-slate-100 text-slate-700 border-b border-slate-300 font-bold text-[11px]">
                         <tr>
-                          <th rowSpan="2" className="p-1.5 border-r border-slate-300 text-center w-12">CU</th>
-                          <th rowSpan="2" className="p-1.5 border-r border-slate-300 text-center w-16">BIL WA (A)</th>
-                          <th rowSpan="2" className="p-1.5 border-r border-slate-300 text-center w-20">DIPENUHI (B)</th>
-                          <th rowSpan="2" className="p-1.5 border-r border-slate-300 text-center w-16">% DIPENUHI</th>
-                          <th rowSpan="2" className="p-1.5 border-r border-slate-300 text-center w-28">WA TIDAK DIPENUHI</th>
-                          <th colSpan="2" className="p-1 border-r border-slate-300 text-center bg-slate-200">SKPK (JAM)</th>
-                          <th colSpan="2" className="p-1 border-r border-slate-300 text-center bg-indigo-50">AGENSI (JAM)</th>
-                          <th rowSpan="2" className="p-1.5 border-slate-300 text-left min-w-[160px]">CADANGAN JAWATANKUASA</th>
-                        </tr>
-                        <tr className="bg-slate-50 text-[10px]">
-                          <th className="p-1 border-r border-slate-300 text-center bg-slate-100">Teori</th>
-                          <th className="p-1 border-r border-slate-300 text-center bg-slate-100">Amali</th>
-                          <th className="p-1 border-r border-slate-300 text-center bg-indigo-50/70">Teori</th>
-                          <th className="p-1 border-r border-slate-300 text-center bg-indigo-50/70">Amali</th>
+                          <th className="p-2 border-r border-slate-300 text-center w-24">CU</th>
+                          <th className="p-2 border-r border-slate-300 w-44">PEMENUHAN WA</th>
+                          <th className="p-2 border-r border-slate-300 w-60">% PEMENUHAN KANDUNGAN (AGENSI)</th>
+                          <th className="p-2 border-r border-slate-300 w-56">
+                            PERBANDINGAN JAM (<span className="font-mono font-normal text-slate-500">NOSS</span> vs <span className="font-mono font-bold text-indigo-700">AGENSI</span>)
+                          </th>
+                          <th className="p-2 border-slate-300 text-left min-w-[200px]">CADANGAN JAWATANKUASA</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
                         {selectedPrograms.map((prog, pIdx) => (
                           <React.Fragment key={prog.code}>
-                            {/* Pengepala Seksyen Program jika berbilang NOSS */}
                             {isMultiProgram && (
                               <tr className="bg-slate-800 text-white font-bold text-[11px]">
-                                <td colSpan="10" className="px-3 py-1 bg-slate-900 border-t border-slate-700">
+                                <td colSpan="5" className="px-3 py-1 bg-slate-900 border-t border-slate-700">
                                   <span className="text-amber-400 font-mono mr-2">PROGRAM {pIdx + 1}:</span>
                                   <span>{prog.title} ({prog.code} - Tahap {cleanTahapNumber(prog.tahap)})</span>
                                 </td>
@@ -2064,7 +2138,9 @@
 
                             {(prog.cus || []).map(cu => {
                               const cuKey = `${prog.code}-${cu.id}`;
-                              const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
+                              // Lalai: dikuncupkan (true) supaya paparan mula nampak ringkas seperti Rajah 1 sahaja
+                              const isCollapsed = collapsedTab2CUs[cuKey] !== false;
+
                               const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
                               const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
                               
@@ -2080,41 +2156,473 @@
                                 });
                               });
 
+                              // Kesinambungan Status Panel + Kiraan Pintar % Kandungan
+                              let panelMetCount = 0;
+                              const panelUnmetWAs = [];
+                              let sumRkPct = 0;
+                              let sumRsPct = 0;
+
+                              cu.was.forEach(wa => {
+                                const gId = `${cu.id}-${wa.id}`;
+                                const fullWaKey = `${prog.code}-${gId}`;
+                                const hasMatch = modules.some(m => m.subModules.some(sm => (sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullWaKey)));
+                                const isFul = manualCompliance[fullWaKey] !== undefined ? manualCompliance[fullWaKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : hasMatch);
+                                
+                                if (isFul) {
+                                  panelMetCount += 1;
+                                } else {
+                                  panelUnmetWAs.push(wa);
+                                }
+
+                                sumRkPct += hasMatch ? (waContentCoverage[fullWaKey]?.rkPct ?? (isFul ? 100 : 0)) : 0;
+                                sumRsPct += hasMatch ? (waContentCoverage[fullWaKey]?.rsPct ?? (isFul ? 100 : 0)) : 0;
+                              });
+
+                              const totalWACount = cu.was.length;
+                              const panelWaPct = totalWACount > 0 ? Math.round((panelMetCount / totalWACount) * 100) : 0;
+                              const isCuComplete = totalWACount > 0 && panelMetCount === totalWACount;
+                              const isCuPartial = panelMetCount > 0 && panelMetCount < totalWACount;
+
+                              const avgRkPct = totalWACount > 0 ? Math.round(sumRkPct / totalWACount) : 0;
+                              const avgRsPct = totalWACount > 0 ? Math.round(sumRsPct / totalWACount) : 0;
+                              const avgCuContentPct = Math.round((avgRkPct + avgRsPct) / 2);
+
+                              const totalSkpkH = nossRkH + nossRsH;
+                              const totalAgensiH = agensiRkH + agensiRsH;
+                              const hourDiff = totalAgensiH - totalSkpkH;
+
+                              const rowStatusClass = isCuComplete
+                                ? "bg-emerald-50/75 hover:bg-emerald-50"
+                                : isCuPartial
+                                ? "hover:bg-amber-50/40"
+                                : "hover:bg-rose-50/30";
+                              const leftAccentClass = isCuComplete
+                                ? "border-l-4 border-l-emerald-500 bg-emerald-100/60"
+                                : isCuPartial
+                                ? "border-l-4 border-l-amber-400 bg-slate-50/60"
+                                : "border-l-4 border-l-rose-400 bg-slate-50/60";
+
                               return (
-                                <tr key={cuKey} className="hover:bg-slate-50">
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-bold text-slate-800">{cu.id}</td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-mono">{st.totalWA}</td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-mono font-semibold text-teal-800">{st.metWA}</td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-mono font-bold">
-                                    <span className={`px-1.5 py-0.2 rounded ${st.pct === 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                      {st.pct}%
-                                    </span>
-                                  </td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center">
-                                    {st.missingWAs.length === 0 ? (
-                                      <span className="text-emerald-700 font-semibold text-[11px]">✓ Lengkap</span>
-                                    ) : (
-                                      <div className="flex flex-wrap gap-1 justify-center">
-                                        {st.missingWAs.map(w => (
-                                          <span key={w.id} className="bg-rose-100 text-rose-700 px-1 rounded text-[10px] font-mono">{w.id}</span>
-                                        ))}
+                                <React.Fragment key={cuKey}>
+                                  {/* BARIS UTAMA RINGKASAN CU (RAJAH 1) */}
+                                  <tr className={`transition ${rowStatusClass}`}>
+                                    {/* 1. CU (Klik untuk buka/kuncupkan jadual COCU terus di bawah baris ini) */}
+                                    <td
+                                      onClick={() => setCollapsedTab2CUs(prev => ({ ...prev, [cuKey]: !isCollapsed }))}
+                                      className={`p-2 border-r border-slate-200 text-center align-middle cursor-pointer select-none transition ${leftAccentClass}`}
+                                      title="Klik untuk kembang/kuncupkan perincian COCU di bawah baris ini"
+                                    >
+                                      <div className="flex items-center justify-center gap-1 font-bold text-slate-800 text-xs">
+                                        <span className="text-[10px] text-indigo-600">{isCollapsed ? "▶" : "▼"}</span>
+                                        <span>{cu.id}</span>
                                       </div>
-                                    )}
-                                  </td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-mono text-slate-600">{nossRkH}j</td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-mono text-slate-600">{nossRsH}j</td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-mono text-indigo-700 font-semibold">{agensiRkH}j</td>
-                                  <td className="p-1.5 border-r border-slate-200 text-center font-mono text-indigo-700 font-semibold">{agensiRsH}j</td>
-                                  <td className="p-1 border-slate-200">
-                                    <textarea
-                                      value={committeeRemarks[cuKey] || ""}
-                                      onChange={(e) => setCommitteeRemarks({ ...committeeRemarks, [cuKey]: e.target.value })}
-                                      placeholder="Ulasan cadangan jawatankuasa..."
-                                      rows="1"
-                                      className="w-full text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500"
-                                    />
-                                  </td>
-                                </tr>
+                                      <div className="text-[9px] text-slate-500 line-clamp-2 leading-tight mt-0.5">{cu.title}</div>
+                                      {isCuComplete ? (
+                                        <span className="mt-1 inline-block bg-emerald-600 text-white text-[8.5px] font-bold px-1.5 py-0.2 rounded shadow-2xs">
+                                          ✓ CU OK
+                                        </span>
+                                      ) : isCuPartial ? (
+                                        <span className="mt-1 inline-block bg-amber-100 text-amber-900 border border-amber-300 text-[8.5px] font-bold px-1.5 py-0.2 rounded">
+                                          Sebahagian
+                                        </span>
+                                      ) : (
+                                        <span className="mt-1 inline-block bg-rose-100 text-rose-800 border border-rose-200 text-[8.5px] font-bold px-1.5 py-0.2 rounded">
+                                          Belum Penuh
+                                        </span>
+                                      )}
+                                      <div className="mt-1 text-[8.5px] font-semibold text-indigo-700 underline">
+                                        {isCollapsed ? "Lihat COCU" : "Tutup COCU"}
+                                      </div>
+                                    </td>
+
+                                    {/* 2. PEMENUHAN WA (BAR + JURANG) */}
+                                    <td className="p-2 border-r border-slate-200 align-middle space-y-1">
+                                      <div className="flex items-center justify-between text-[11px] font-mono">
+                                        <span className="font-bold text-slate-700">{panelMetCount}/{totalWACount} WA</span>
+                                        <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${isCuComplete ? 'bg-emerald-200 text-emerald-950' : isCuPartial ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'}`}>
+                                          {panelWaPct}%
+                                        </span>
+                                      </div>
+                                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full transition-all duration-300 ${isCuComplete ? 'bg-emerald-500' : isCuPartial ? 'bg-amber-500' : 'bg-rose-400'}`}
+                                          style={{ width: `${panelWaPct}%` }}
+                                        ></div>
+                                      </div>
+                                      <div className="pt-0.5">
+                                        {panelUnmetWAs.length === 0 ? (
+                                          <span className="text-emerald-700 font-bold text-[10px]">✓ Semua WA Dipersetujui Panel</span>
+                                        ) : (
+                                          <div className="flex flex-wrap gap-1 items-center">
+                                            <span className="text-[8.5px] text-rose-600 font-semibold">Jurang:</span>
+                                            {panelUnmetWAs.map(w => (
+                                              <span key={w.id} className="bg-rose-100 text-rose-700 border border-rose-200 px-1 rounded text-[8.5px] font-mono font-bold">
+                                                {w.id}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* 3. HISTOGRAM PEMENUHAN KANDUNGAN (AGENSI) - TEORI & AMALI */}
+                                    <td className="p-2 border-r border-slate-200 align-middle space-y-1.5">
+                                      <div className="space-y-0.5">
+                                        <div className="flex items-center justify-between text-[10px]">
+                                          <span className="font-semibold text-slate-600">Teori (RK):</span>
+                                          <span className="font-mono font-bold text-teal-800">{avgRkPct}%</span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                          <div className="h-full bg-teal-600 transition-all duration-300" style={{ width: `${avgRkPct}%` }}></div>
+                                        </div>
+                                      </div>
+
+                                      <div className="space-y-0.5">
+                                        <div className="flex items-center justify-between text-[10px]">
+                                          <span className="font-semibold text-slate-600">Amali (RS):</span>
+                                          <span className="font-mono font-bold text-indigo-800">{avgRsPct}%</span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                          <div className="h-full bg-indigo-600 transition-all duration-300" style={{ width: `${avgRsPct}%` }}></div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-between pt-0.5 border-t border-slate-100 text-[10px]">
+                                        <span className="text-slate-500">Purata Kandungan:</span>
+                                        <span className={`font-bold font-mono ${avgCuContentPct >= 80 ? 'text-emerald-700' : avgCuContentPct > 0 ? 'text-amber-700' : 'text-rose-600'}`}>
+                                          {avgCuContentPct}% {avgCuContentPct >= 80 ? '✓' : avgCuContentPct > 0 ? '⚠' : '✗'}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* 4. PERBANDINGAN JAM (NOSS vs AGENSI) */}
+                                    <td className="p-2 border-r border-slate-200 align-middle space-y-1 text-[10px]">
+                                      <div className="flex items-center justify-between bg-white/80 px-1.5 py-0.5 rounded border border-slate-200/80">
+                                        <span className="text-slate-600 font-medium">Teori:</span>
+                                        <span className="font-mono">
+                                          <span className="text-slate-500">{nossRkH}j</span> <span className="text-slate-400">vs</span>{" "}
+                                          <strong className="text-indigo-700">{agensiRkH}j</strong>
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between bg-white/80 px-1.5 py-0.5 rounded border border-slate-200/80">
+                                        <span className="text-slate-600 font-medium">Amali:</span>
+                                        <span className="font-mono">
+                                          <span className="text-slate-500">{nossRsH}j</span> <span className="text-slate-400">vs</span>{" "}
+                                          <strong className="text-indigo-700">{agensiRsH}j</strong>
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between pt-0.5 font-semibold">
+                                        <span className="text-slate-500">Status Jam:</span>
+                                        {totalAgensiH === 0 ? (
+                                          <span className="text-rose-600">✗ Tiada Jam ({totalSkpkH}j)</span>
+                                        ) : hourDiff >= 0 ? (
+                                          <span className="text-emerald-700">✓ Mencukupi (+{hourDiff}j)</span>
+                                        ) : (
+                                          <span className="text-amber-700">⚠ Kurang {Math.abs(hourDiff)}j</span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* 5. CADANGAN JAWATANKUASA */}
+                                    <td className="p-1.5 border-slate-200 align-middle">
+                                      <textarea
+                                        value={committeeRemarks[cuKey] || ""}
+                                        onChange={(e) => setCommitteeRemarks({ ...committeeRemarks, [cuKey]: e.target.value })}
+                                        placeholder="Ulasan cadangan jawatankuasa..."
+                                        rows="3"
+                                        className="w-full text-xs p-1.5 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                      />
+                                    </td>
+                                  </tr>
+
+                                  {/* BARIS LACI PERINCIAN COCU (RAJAH 2 — TERUS DI BAWAH BARIS CU BERKENAAN) */}
+                                  {!isCollapsed && (
+                                    <tr className="bg-slate-100/90">
+                                      <td colSpan="5" className="p-2.5 border-t border-b-2 border-indigo-300">
+                                        <div className="bg-white rounded-lg border border-indigo-200 shadow-inner overflow-hidden">
+                                          <div className="bg-indigo-950 text-white px-3 py-1.5 flex items-center justify-between text-[11px]">
+                                            <div className="flex items-center gap-2">
+                                              <span className="bg-amber-400 text-slate-950 font-bold px-1.5 py-0.2 rounded font-mono">{cu.id}</span>
+                                              <span className="font-bold">PERINCIAN COCU & PADANAN: {cu.title}</span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={() => setCollapsedTab2CUs(prev => ({ ...prev, [cuKey]: true }))}
+                                              className="text-[10px] bg-white/15 hover:bg-white/25 px-2 py-0.5 rounded font-semibold"
+                                            >
+                                              ▲ Tutup Perincian {cu.id}
+                                            </button>
+                                          </div>
+
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse text-xs">
+                                              <thead className="bg-slate-100 text-slate-700 border-b border-slate-300 font-bold">
+                                                <tr>
+                                                  <th colSpan={showTab2RkRs ? 3 : 1} className="p-1.5 border-r border-slate-300 text-center bg-slate-200 text-slate-800 uppercase">
+                                                    {showTab2RkRs ? "COCU / TASK PROFILE (SKPK)" : "SKPK"}
+                                                  </th>
+                                                  <th colSpan="5" className="p-1.5 border-r border-slate-300 text-center bg-indigo-100 text-indigo-900 uppercase">
+                                                    KURIKULUM PROGRAM AGENSI
+                                                  </th>
+                                                  <th className="p-1.5 border-r border-slate-300 text-center bg-slate-200 w-24">
+                                                    MEMENUHI
+                                                  </th>
+                                                  <th rowSpan="2" className="p-1.5 text-left min-w-[130px]">CATATAN (JURANG)</th>
+                                                </tr>
+                                                <tr className="bg-slate-50 text-[10px]">
+                                                  <th className="p-1 border-r border-slate-300 w-24 text-center">WA</th>
+                                                  {showTab2RkRs && (
+                                                    <>
+                                                      <th className="p-1 border-r border-slate-300 min-w-[140px]">Related Knowledge</th>
+                                                      <th className="p-1 border-r border-slate-300 min-w-[140px]">Applied Skills</th>
+                                                    </>
+                                                  )}
+                                                  <th className="p-1 border-r border-slate-300 w-24">Module Agensi</th>
+                                                  <th className="p-1 border-r border-slate-300 min-w-[140px]">Knowledge / Sub Topic</th>
+                                                  <th className="p-1 border-r border-slate-300 w-12 text-center">Jam</th>
+                                                  <th className="p-1 border-r border-slate-300 min-w-[140px]">Applied Skills</th>
+                                                  <th className="p-1 border-r border-slate-300 w-12 text-center">Jam</th>
+                                                  <th className="p-1 border-r border-slate-300 text-center w-24">Status (Klik Togol)</th>
+                                                </tr>
+                                              </thead>
+
+                                              <tbody className="divide-y divide-slate-200">
+                                                {cu.was.map(wa => {
+                                                  const gId = `${cu.id}-${wa.id}`;
+                                                  const fullWaKey = `${prog.code}-${gId}`;
+                                                  
+                                                  const matchingSubs = [];
+                                                  modules.forEach(m => {
+                                                    m.subModules.forEach(sm => {
+                                                      if ((sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullWaKey)) {
+                                                        matchingSubs.push({ mod: m, sub: sm });
+                                                      }
+                                                    });
+                                                  });
+
+                                                  const rowSpanCount = Math.max(1, matchingSubs.length);
+                                                  const defaultFulfilled = matchingSubs.length > 0;
+                                                  const isFulfilled = manualCompliance[fullWaKey] !== undefined ? manualCompliance[fullWaKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultFulfilled);
+
+                                                  return (
+                                                    <React.Fragment key={wa.id}>
+                                                      <tr>
+                                                        <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-center font-bold text-indigo-700 bg-slate-50 align-top">
+                                                          <div className="font-mono text-xs">{wa.id}</div>
+                                                          <div className="text-[10px] text-slate-500 font-normal leading-tight mt-0.5">{wa.title}</div>
+                                                          
+                                                          {!showTab2RkRs && (
+                                                            <div className="mt-1.5 space-y-1 text-[9.5px] font-mono">
+                                                              <div className="bg-amber-100 text-amber-900 px-1 rounded">RK: {wa.rkHours}j</div>
+                                                              <div className="bg-indigo-100 text-indigo-900 px-1 rounded">RS: {wa.rsHours}j</div>
+                                                            </div>
+                                                          )}
+
+                                                          {matchingSubs.length > 1 && (
+                                                            <div 
+                                                              className="mt-1.5 inline-block bg-teal-50 border border-teal-300 text-teal-800 text-[9px] px-1.5 py-0.5 rounded font-bold shadow-xs"
+                                                              title={`Dipadankan kepada ${matchingSubs.length} SubModul Agensi: ${matchingSubs.map(s => s.mod.code + '-' + s.sub.name).join(", ")}`}
+                                                            >
+                                                              {matchingSubs.length} SubModul Berkaitan
+                                                            </div>
+                                                          )}
+                                                        </td>
+
+                                                        {showTab2RkRs && (
+                                                          <>
+                                                            <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-slate-700 align-top bg-slate-50/50">
+                                                              <div className="font-medium text-slate-800 text-[11px]">{wa.rk}</div>
+                                                              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5">
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">⏱ {wa.rkHours} Jam</span>
+                                                                {matchingSubs.length > 0 ? (
+                                                                  <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded px-1.5 py-0.5 shadow-2xs" title="Peratusan kandungan teori sub-modul agensi yang memenuhi standard WA ini">
+                                                                    <span className="text-[10px] font-semibold text-slate-600">Pemenuhan Kandungan (Agensi):</span>
+                                                                    <input
+                                                                      type="number"
+                                                                      min="0"
+                                                                      max="100"
+                                                                      value={waContentCoverage[fullWaKey]?.rkPct ?? (isFulfilled ? 100 : 0)}
+                                                                      onChange={(e) => {
+                                                                        const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                                                        setWaContentCoverage(prev => ({
+                                                                          ...prev,
+                                                                          [fullWaKey]: {
+                                                                            rkPct: v,
+                                                                            rsPct: prev[fullWaKey]?.rsPct ?? (isFulfilled ? 100 : 0)
+                                                                          }
+                                                                        }));
+                                                                      }}
+                                                                      className="w-11 text-center font-mono font-bold text-[11px] text-teal-800 border border-slate-300 rounded px-1 py-0.2"
+                                                                    />
+                                                                    <span className="text-[10px] font-bold text-slate-500">%</span>
+                                                                  </div>
+                                                                ) : (
+                                                                  <span className="text-[10px] font-mono text-slate-400 italic">0% (Tiada SubModul)</span>
+                                                                )}
+                                                              </div>
+                                                            </td>
+
+                                                            <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-slate-700 align-top bg-slate-50/50">
+                                                              <div className="font-medium text-slate-800 text-[11px]">{wa.rs}</div>
+                                                              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5">
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-indigo-100 text-indigo-900 border border-indigo-300 shadow-2xs">⏱ {wa.rsHours} Jam</span>
+                                                                {matchingSubs.length > 0 ? (
+                                                                  <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded px-1.5 py-0.5 shadow-2xs" title="Peratusan kandungan amali sub-modul agensi yang memenuhi standard WA ini">
+                                                                    <span className="text-[10px] font-semibold text-slate-600">Pemenuhan Kandungan (Agensi):</span>
+                                                                    <input
+                                                                      type="number"
+                                                                      min="0"
+                                                                      max="100"
+                                                                      value={waContentCoverage[fullWaKey]?.rsPct ?? (isFulfilled ? 100 : 0)}
+                                                                      onChange={(e) => {
+                                                                        const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                                                        setWaContentCoverage(prev => ({
+                                                                          ...prev,
+                                                                          [fullWaKey]: {
+                                                                            rkPct: prev[fullWaKey]?.rkPct ?? (isFulfilled ? 100 : 0),
+                                                                            rsPct: v
+                                                                          }
+                                                                        }));
+                                                                      }}
+                                                                      className="w-11 text-center font-mono font-bold text-[11px] text-indigo-800 border border-slate-300 rounded px-1 py-0.2"
+                                                                    />
+                                                                    <span className="text-[10px] font-bold text-slate-500">%</span>
+                                                                  </div>
+                                                                ) : (
+                                                                  <span className="text-[10px] font-mono text-slate-400 italic">0% (Tiada SubModul)</span>
+                                                                )}
+                                                              </div>
+                                                            </td>
+                                                          </>
+                                                        )}
+
+                                                        {matchingSubs.length > 0 ? (
+                                                          <>
+                                                            <td className="p-1.5 border-r border-slate-200 align-top">
+                                                              <span className="font-bold text-indigo-700 font-mono">{matchingSubs[0].mod.code}</span>
+                                                              <div className="text-[11px] text-slate-800 font-medium">{matchingSubs[0].sub.name}</div>
+                                                              {matchingSubs[0].sub.matchedWAs.length > 1 && (
+                                                                <div className="mt-1 inline-block bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] px-1 py-0.2 rounded font-medium">
+                                                                  {matchingSubs[0].sub.matchedWAs.length} WA Berkaitan
+                                                                </div>
+                                                              )}
+                                                            </td>
+                                                            <td className="p-1 border-r border-slate-200 align-top text-slate-700">
+                                                              <textarea
+                                                                value={matchingSubs[0].sub.knowledge}
+                                                                onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'knowledge', e.target.value)}
+                                                                rows="2"
+                                                                className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                              />
+                                                            </td>
+                                                            <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
+                                                              <input
+                                                                type="number"
+                                                                value={matchingSubs[0].sub.rkHours}
+                                                                onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'rkHours', Number(e.target.value))}
+                                                                className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                              />
+                                                            </td>
+                                                            <td className="p-1 border-r border-slate-200 align-top text-slate-700">
+                                                              <textarea
+                                                                value={matchingSubs[0].sub.skills}
+                                                                onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'skills', e.target.value)}
+                                                                rows="2"
+                                                                className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                              />
+                                                            </td>
+                                                            <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
+                                                              <input
+                                                                type="number"
+                                                                value={matchingSubs[0].sub.rsHours}
+                                                                onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'rsHours', Number(e.target.value))}
+                                                                className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                              />
+                                                            </td>
+                                                          </>
+                                                        ) : (
+                                                          <td colSpan="5" className="p-2 text-center text-rose-500 font-medium bg-rose-50/40 text-[11px]">
+                                                            Tiada modul agensi dipadankan
+                                                          </td>
+                                                        )}
+
+                                                        <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-center align-middle">
+                                                          <button
+                                                            onClick={() => toggleComplianceStatus(fullWaKey, defaultFulfilled)}
+                                                            className={`px-2 py-1 rounded text-xs font-bold transition flex items-center justify-center gap-1 mx-auto shadow-xs ${isFulfilled ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300' : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300'}`}
+                                                            title="Klik untuk ubah pilihan Memenuhi/Tidak"
+                                                          >
+                                                            <span>{isFulfilled ? "✓ Ya" : "✗ Tidak"}</span>
+                                                          </button>
+                                                        </td>
+
+                                                        <td rowSpan={rowSpanCount} className="p-1 text-slate-600 text-[10px] align-middle">
+                                                          <textarea
+                                                            value={gapRemarks[fullWaKey] !== undefined ? gapRemarks[fullWaKey] : (gapRemarks[gId] !== undefined ? gapRemarks[gId] : (isFulfilled ? "Memenuhi standard minimum." : "Kandungan tiada dalam modul agensi."))}
+                                                            onChange={(e) => setGapRemarks({ ...gapRemarks, [fullWaKey]: e.target.value })}
+                                                            rows="2"
+                                                            placeholder="Catatan jurang penilaian..."
+                                                            className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                          />
+                                                        </td>
+                                                      </tr>
+
+                                                      {matchingSubs.slice(1).map((item, sIdx) => (
+                                                        <tr key={sIdx} className="bg-slate-50/30">
+                                                          <td className="p-1.5 border-r border-slate-200 align-top">
+                                                            <span className="font-bold text-indigo-700 font-mono">{item.mod.code}</span>
+                                                            <div className="text-[11px] text-slate-800 font-medium">{item.sub.name}</div>
+                                                            {item.sub.matchedWAs.length > 1 && (
+                                                              <div className="mt-1 inline-block bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] px-1 py-0.2 rounded font-medium">
+                                                                {item.sub.matchedWAs.length} WA Berkaitan
+                                                              </div>
+                                                            )}
+                                                          </td>
+                                                          <td className="p-1 border-r border-slate-200 align-top text-slate-700">
+                                                            <textarea
+                                                              value={item.sub.knowledge}
+                                                              onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'knowledge', e.target.value)}
+                                                              rows="2"
+                                                              className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                            />
+                                                          </td>
+                                                          <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
+                                                            <input
+                                                              type="number"
+                                                              value={item.sub.rkHours}
+                                                              onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'rkHours', Number(e.target.value))}
+                                                              className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                            />
+                                                          </td>
+                                                          <td className="p-1 border-r border-slate-200 align-top text-slate-700">
+                                                            <textarea
+                                                              value={item.sub.skills}
+                                                              onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'skills', e.target.value)}
+                                                              rows="2"
+                                                              className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                            />
+                                                          </td>
+                                                          <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
+                                                            <input
+                                                              type="number"
+                                                              value={item.sub.rsHours}
+                                                              onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'rsHours', Number(e.target.value))}
+                                                              className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
+                                                            />
+                                                          </td>
+                                                        </tr>
+                                                      ))}
+                                                    </React.Fragment>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
                               );
                             })}
                           </React.Fragment>
@@ -2122,272 +2630,6 @@
                       </tbody>
                     </table>
                   </div>
-                </div>
-
-                {/* 3. BORANG COCU JPK 03 (DISUSUN BERIKUTAN DENGAN HEADER PROGRAM) */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between no-print">
-                    <span className="text-xs text-slate-500 font-medium">
-                      ✏️ <strong>Petua Tab 2:</strong> Butiran Modul Agensi (Teori, Amali, Jam) dan Catatan GAP boleh dipinda terus pada borang. Klik butang status untuk togol Memenuhi/Tidak.
-                    </span>
-                  </div>
-
-                  {selectedPrograms.map((prog, pIdx) => (
-                    <div key={prog.code} className="space-y-3">
-                      
-                      {/* Pemisah Program jika Multi-NOSS */}
-                      {isMultiProgram && (
-                        <div className="bg-indigo-900 text-white px-4 py-2 rounded-lg flex items-center justify-between shadow-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="bg-amber-400 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded">PROGRAM {pIdx + 1}</span>
-                            <span className="font-bold text-xs md:text-sm">{prog.title}</span>
-                            <span className="font-mono text-indigo-200 text-xs">({prog.code})</span>
-                          </div>
-                          <span className="text-xs text-indigo-200 font-semibold">Tahap {cleanTahapNumber(prog.tahap)}</span>
-                        </div>
-                      )}
-
-                      {(prog.cus || []).map(cu => {
-                        const cuKey = `${prog.code}-${cu.id}`;
-                        const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0 };
-                        return (
-                          <div key={cuKey} className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                            
-                            <div className="bg-slate-50 border-b border-slate-200 p-2.5 flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="bg-teal-700 text-white font-bold px-2 py-0.5 rounded text-xs font-mono">{cu.id}</span>
-                                <span className="font-bold text-slate-800 text-xs md:text-sm">{cu.title}</span>
-                              </div>
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${st.pct === 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                {st.metWA}/{st.totalWA} WA Dipenuhi ({st.pct}%)
-                              </span>
-                            </div>
-
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-left border-collapse text-xs print-table">
-                                <thead className="bg-slate-100 text-slate-700 border-b border-slate-300 font-bold">
-                                  <tr>
-                                    <th colSpan="3" className="p-1.5 border-r border-slate-300 text-center bg-slate-200 text-slate-800 uppercase">
-                                      COCU / TASK PROFILE (SKPK)
-                                    </th>
-                                    <th colSpan="5" className="p-1.5 border-r border-slate-300 text-center bg-indigo-100 text-indigo-900 uppercase">
-                                      KURIKULUM PROGRAM AGENSI
-                                    </th>
-                                    
-                                    <th className="p-1.5 border-r border-slate-300 text-center bg-slate-200 w-24 no-print">
-                                      MEMENUHI
-                                    </th>
-
-                                    <th colSpan="2" className="p-1.5 border-r border-slate-300 text-center bg-slate-200 w-20 print-show-col">
-                                      MEMENUHI
-                                    </th>
-
-                                    <th rowSpan="2" className="p-1.5 text-left min-w-[130px]">CATATAN (GAP)</th>
-                                  </tr>
-
-                                  <tr className="bg-slate-50 text-[10px]">
-                                    <th className="p-1 border-r border-slate-300 w-16 text-center">WA</th>
-                                    <th className="p-1 border-r border-slate-300 min-w-[140px]">Related Knowledge</th>
-                                    <th className="p-1 border-r border-slate-300 min-w-[140px]">Applied Skills</th>
-
-                                    <th className="p-1 border-r border-slate-300 w-24">Module Agensi</th>
-                                    <th className="p-1 border-r border-slate-300 min-w-[140px]">Knowledge / Sub Topic</th>
-                                    <th className="p-1 border-r border-slate-300 w-12 text-center">Jam</th>
-                                    <th className="p-1 border-r border-slate-300 min-w-[140px]">Applied Skills</th>
-                                    <th className="p-1 border-r border-slate-300 w-12 text-center">Jam</th>
-
-                                    <th className="p-1 border-r border-slate-300 text-center w-24 no-print">Status (Klik Togol)</th>
-
-                                    <th className="p-1 border-r border-slate-300 text-center w-10 print-show-col">Ya</th>
-                                    <th className="p-1 border-r border-slate-300 text-center w-10 print-show-col">Tidak</th>
-                                  </tr>
-                                </thead>
-
-                                <tbody className="divide-y divide-slate-200">
-                                  {cu.was.map(wa => {
-                                    const gId = `${cu.id}-${wa.id}`;
-                                    const fullWaKey = `${prog.code}-${gId}`;
-                                    
-                                    const matchingSubs = [];
-                                    modules.forEach(m => {
-                                      m.subModules.forEach(sm => {
-                                        if ((sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullWaKey)) {
-                                          matchingSubs.push({ mod: m, sub: sm });
-                                        }
-                                      });
-                                    });
-
-                                    const rowSpanCount = Math.max(1, matchingSubs.length);
-                                    const defaultFulfilled = matchingSubs.length > 0;
-                                    const isFulfilled = manualCompliance[fullWaKey] !== undefined ? manualCompliance[fullWaKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultFulfilled);
-
-                                    return (
-                                      <React.Fragment key={wa.id}>
-                                        <tr>
-                                          {/* Kolum WA */}
-                                          <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-center font-bold text-indigo-700 bg-slate-50 align-top">
-                                            <div className="font-mono text-xs">{wa.id}</div>
-                                            <div className="text-[10px] text-slate-500 font-normal leading-tight mt-0.5">{wa.title}</div>
-                                            
-                                            {matchingSubs.length > 1 && (
-                                              <div 
-                                                className="mt-1.5 inline-block bg-teal-50 border border-teal-300 text-teal-800 text-[9px] px-1.5 py-0.5 rounded font-bold shadow-xs"
-                                                title={`Dipadankan kepada ${matchingSubs.length} SubModul Agensi: ${matchingSubs.map(s => s.mod.code + '-' + s.sub.name).join(", ")}`}
-                                              >
-                                                {matchingSubs.length} SubModul Berkaitan
-                                              </div>
-                                            )}
-                                          </td>
-
-                                          <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-slate-700 align-top bg-slate-50/50">
-                                            <div className="font-medium text-slate-800 text-[11px]">{wa.rk}</div>
-                                            <div className="mt-1.5"><span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">⏱ {wa.rkHours} Jam</span></div>
-                                          </td>
-
-                                          <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-slate-700 align-top bg-slate-50/50">
-                                            <div className="font-medium text-slate-800 text-[11px]">{wa.rs}</div>
-                                            <div className="mt-1.5"><span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-indigo-100 text-indigo-900 border border-indigo-300 shadow-2xs">⏱ {wa.rsHours} Jam</span></div>
-                                          </td>
-
-                                          {/* Sub-baris Agensi 1 */}
-                                          {matchingSubs.length > 0 ? (
-                                            <>
-                                              <td className="p-1.5 border-r border-slate-200 align-top">
-                                                <span className="font-bold text-indigo-700 font-mono">{matchingSubs[0].mod.code}</span>
-                                                <div className="text-[11px] text-slate-800 font-medium">{matchingSubs[0].sub.name}</div>
-                                                {matchingSubs[0].sub.matchedWAs.length > 1 && (
-                                                  <div className="mt-1 inline-block bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] px-1 py-0.2 rounded font-medium no-print">
-                                                    {matchingSubs[0].sub.matchedWAs.length} WA Berkaitan
-                                                  </div>
-                                                )}
-                                              </td>
-                                              <td className="p-1 border-r border-slate-200 align-top text-slate-700">
-                                                <textarea
-                                                  value={matchingSubs[0].sub.knowledge}
-                                                  onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'knowledge', e.target.value)}
-                                                  rows="2"
-                                                  className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                                />
-                                              </td>
-                                              <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
-                                                <input
-                                                  type="number"
-                                                  value={matchingSubs[0].sub.rkHours}
-                                                  onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'rkHours', Number(e.target.value))}
-                                                  className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                                />
-                                              </td>
-                                              <td className="p-1 border-r border-slate-200 align-top text-slate-700">
-                                                <textarea
-                                                  value={matchingSubs[0].sub.skills}
-                                                  onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'skills', e.target.value)}
-                                                  rows="2"
-                                                  className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                                />
-                                              </td>
-                                              <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
-                                                <input
-                                                  type="number"
-                                                  value={matchingSubs[0].sub.rsHours}
-                                                  onChange={(e) => handleUpdateSubModuleField(matchingSubs[0].mod.id, matchingSubs[0].sub.subId, 'rsHours', Number(e.target.value))}
-                                                  className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                                />
-                                              </td>
-                                            </>
-                                          ) : (
-                                            <td colSpan="5" className="p-2 text-center text-rose-500 font-medium bg-rose-50/40 text-[11px]">
-                                              Tiada modul agensi dipadankan
-                                            </td>
-                                          )}
-
-                                          {/* UI: 1 KOLUM SAHAJA DENGAN TOGOL INTERAKTIF */}
-                                          <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-center align-middle no-print">
-                                            <button
-                                              onClick={() => toggleComplianceStatus(fullWaKey, defaultFulfilled)}
-                                              className={`px-2 py-1 rounded text-xs font-bold transition flex items-center justify-center gap-1 mx-auto shadow-xs ${isFulfilled ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300' : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300'}`}
-                                              title="Klik untuk ubah pilihan Memenuhi/Tidak"
-                                            >
-                                              <span>{isFulfilled ? "✓ Ya" : "✗ Tidak"}</span>
-                                            </button>
-                                          </td>
-
-                                          {/* PRINT: 2 KOLUM (Ya / Tidak) */}
-                                          <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-center font-bold text-slate-900 align-middle print-show-col">
-                                            {isFulfilled ? "Ya" : ""}
-                                          </td>
-                                          <td rowSpan={rowSpanCount} className="p-1.5 border-r border-slate-200 text-center font-bold text-slate-900 align-middle print-show-col">
-                                            {!isFulfilled ? "Tidak" : ""}
-                                          </td>
-
-                                          {/* Catatan Jurang */}
-                                          <td rowSpan={rowSpanCount} className="p-1 text-slate-600 text-[10px] align-middle">
-                                            <textarea
-                                              value={gapRemarks[fullWaKey] !== undefined ? gapRemarks[fullWaKey] : (gapRemarks[gId] !== undefined ? gapRemarks[gId] : (isFulfilled ? "Memenuhi standard minimum." : "Kandungan tiada dalam modul agensi."))}
-                                              onChange={(e) => setGapRemarks({ ...gapRemarks, [fullWaKey]: e.target.value })}
-                                              rows="2"
-                                              placeholder="Catatan jurang penilaian..."
-                                              className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                            />
-                                          </td>
-                                        </tr>
-
-                                        {/* Multi-Module Matching Rows */}
-                                        {matchingSubs.slice(1).map((item, sIdx) => (
-                                          <tr key={sIdx} className="bg-slate-50/30">
-                                            <td className="p-1.5 border-r border-slate-200 align-top">
-                                              <span className="font-bold text-indigo-700 font-mono">{item.mod.code}</span>
-                                              <div className="text-[11px] text-slate-800 font-medium">{item.sub.name}</div>
-                                              {item.sub.matchedWAs.length > 1 && (
-                                                <div className="mt-1 inline-block bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] px-1 py-0.2 rounded font-medium no-print">
-                                                  {item.sub.matchedWAs.length} WA Berkaitan
-                                                </div>
-                                              )}
-                                            </td>
-                                            <td className="p-1 border-r border-slate-200 align-top text-slate-700">
-                                              <textarea
-                                                value={item.sub.knowledge}
-                                                onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'knowledge', e.target.value)}
-                                                rows="2"
-                                                className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                              />
-                                            </td>
-                                            <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
-                                              <input
-                                                type="number"
-                                                value={item.sub.rkHours}
-                                                onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'rkHours', Number(e.target.value))}
-                                                className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                              />
-                                            </td>
-                                            <td className="p-1 border-r border-slate-200 align-top text-slate-700">
-                                              <textarea
-                                                value={item.sub.skills}
-                                                onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'skills', e.target.value)}
-                                                rows="2"
-                                                className="w-full text-[11px] p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                              />
-                                            </td>
-                                            <td className="p-1 border-r border-slate-200 text-center font-mono align-top">
-                                              <input
-                                                type="number"
-                                                value={item.sub.rsHours}
-                                                onChange={(e) => handleUpdateSubModuleField(item.mod.id, item.sub.subId, 'rsHours', Number(e.target.value))}
-                                                className="w-12 text-center text-xs p-1 border border-slate-200 rounded focus:ring-1 focus:ring-indigo-500 bg-white"
-                                              />
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </React.Fragment>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
                 </div>
 
               </div>
@@ -2861,7 +3103,7 @@
             Sistem Pemetaan Kurikulum & NOSS Bersepadu © 2026
           </footer>
           {/* =====================================================================
-              MODAL PUSAT CETAKAN & EKSPORT RASMI JPK (PDF + EXCEL + ZIP)
+              MODAL PUSAT CETAKAN & EKSPORT RASMI JPK (PDF + EXCEL + ZIP + JKT)
           ===================================================================== */}
           {showPrintCenterModal && (
             <div className="fixed inset-0 bg-slate-900/75 z-50 flex items-center justify-center p-4 no-print">
@@ -2873,7 +3115,7 @@
                     </div>
                     <div>
                       <h3 className="font-bold text-slate-800 text-sm">Pusat Cetakan & Eksport Dokumen Rasmi JPK</h3>
-                      <p className="text-[11px] text-slate-500">Susun atur rasmi Jata Negara, kotak muka surat pepenjuru & pecahan mengikut CU.</p>
+                      <p className="text-[11px] text-slate-500">Susun atur rasmi Jata Negara, kotak muka surat pepenjuru, rujukan silang CU & helaian JKT.</p>
                     </div>
                   </div>
                   <button type="button" onClick={() => setShowPrintCenterModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
@@ -2891,7 +3133,7 @@
                       <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded font-bold">A4 Landscape</span>
                     </div>
                     <p className="text-[11px] text-indigo-900/80 leading-relaxed">
-                      Menjana set lengkap <strong>JPK/PEMETAAN/02-A</strong>, <strong>JPK/PEMETAAN/03</strong> (pecahan setiap CU), <strong>JPK/PEMETAAN/04-A</strong> & <strong>04-B</strong>.
+                      Menjana set rasmi <strong>JPK/PEMETAAN/02-A</strong>, <strong>JPK/PEMETAAN/03</strong> (pecahan setiap CU), <strong>JPK/PEMETAAN/04-A</strong> & <strong>04-B</strong>.
                     </p>
                   </button>
 
@@ -2906,7 +3148,7 @@
                       <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded font-bold">.ZIP + .XLSX</span>
                     </div>
                     <p className="text-[11px] text-emerald-900/80 leading-relaxed">
-                      Memuat turun arkib <strong>.ZIP</strong> mengandungi fail kerja <strong>Excel 4 Helaian</strong> (Matriks, Padanan, Rumusan 04-A & 04-B) + panduan cetak PDF.
+                      Memuat turun arkib <strong>.ZIP</strong> mengandungi fail kerja <strong>Excel 3 Helaian</strong> (Matriks, Padanan, Rumusan 04-A & 04-B) + panduan cetak PDF.
                     </p>
                   </button>
                 </div>
@@ -2924,17 +3166,20 @@
                     <button type="button" onClick={() => triggerOfficialPrint("04AB")} className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 rounded font-semibold text-slate-800 text-[11px]">
                       📄 JPK/PEMETAAN/04-A & 04-B (Rumusan & Tandatangan)
                     </button>
+                    <button type="button" onClick={() => triggerOfficialPrint("JKT")} className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-400 rounded font-bold text-amber-950 text-[11px]">
+                      🏛️ Rumusan JKT (COPTPA)
+                    </button>
                   </div>
                 </div>
 
-                {/* BAHAGIAN OPTIONAL: PENGISIAN NAMA AJK & SYOR PANEL SEBELUM CETAK */}
+                {/* BAHAGIAN OPTIONAL: PENGISIAN NAMA AJK, SYOR PANEL & TETAPAN JKT SEBELUM CETAK */}
                 <div className="border border-slate-200 rounded-lg overflow-hidden text-xs">
                   <button
                     type="button"
                     onClick={() => setShowSignConfig(!showSignConfig)}
                     className="w-full px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200/70 flex items-center justify-between font-bold text-slate-800 text-left transition"
                   >
-                    <span>✍️ Tetapan Ulasan, Syor Panel & Nama Tandatangan AJK (Pilihan — Kosongkan Jika Tulis Tangan)</span>
+                    <span>✍️ Tetapan Ulasan, Syor Panel, Tandatangan AJK & Mesyuarat JKT (Pilihan)</span>
                     <span>{showSignConfig ? "▲" : "▼"}</span>
                   </button>
 
@@ -3035,6 +3280,41 @@
                           </div>
                         </div>
                       </div>
+
+                      {/* Tetapan Khusus Helaian JKT (COPTPA) */}
+                      <div className="space-y-2 pt-2 border-t">
+                        <span className="font-bold text-teal-800 block">🏛️ Tetapan Mesyuarat Jawatankuasa Teknikal Pentauliahan (JKT - COPTPA):</span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-600">Bilangan Mesyuarat JKT:</label>
+                            <input type="text" placeholder="Contoh: BIL. 11/2026" value={jktMeetingNo} onChange={e => setJktMeetingNo(e.target.value)} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-600">Tarikh Mesyuarat Bersidang:</label>
+                            <input type="text" placeholder="Contoh: 13 NOVEMBER 2026" value={jktMeetingDate} onChange={e => setJktMeetingDate(e.target.value)} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">AHLI JKT (KIRI)</span>
+                            <input type="text" placeholder="Nama Penuh" value={jktSignatories.ahli1Name} onChange={e => setJktSignatories({...jktSignatories, ahli1Name: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Jawatan" value={jktSignatories.ahli1Role} onChange={e => setJktSignatories({...jktSignatories, ahli1Role: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={jktSignatories.ahli1Date} onChange={e => setJktSignatories({...jktSignatories, ahli1Date: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">PENGERUSI JKT (TENGAH)</span>
+                            <input type="text" placeholder="Nama Penuh" value={jktSignatories.chairName} onChange={e => setJktSignatories({...jktSignatories, chairName: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Jawatan" value={jktSignatories.chairRole} onChange={e => setJktSignatories({...jktSignatories, chairRole: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={jktSignatories.chairDate} onChange={e => setJktSignatories({...jktSignatories, chairDate: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                          <div className="p-2 bg-slate-50 rounded border space-y-1">
+                            <span className="font-bold text-[10px] text-slate-500">AHLI JKT (KANAN)</span>
+                            <input type="text" placeholder="Nama Penuh" value={jktSignatories.ahli2Name} onChange={e => setJktSignatories({...jktSignatories, ahli2Name: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Jawatan" value={jktSignatories.ahli2Role} onChange={e => setJktSignatories({...jktSignatories, ahli2Role: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                            <input type="text" placeholder="Tarikh" value={jktSignatories.ahli2Date} onChange={e => setJktSignatories({...jktSignatories, ahli2Date: e.target.value})} className="w-full p-1 border rounded text-[11px]" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3056,7 +3336,7 @@
               const skpkTitleStr = selectedPrograms.map(p => p.title).join(" + ");
               const skpkCodeStr = selectedPrograms.map(p => formatSkpkCodeWithTahap(p.code, p.tahap)).join(" | ");
 
-              // Komponen Kepala Surat Rasmi JPK + Kotak Muka Surat Pepenjuru (Rajah 2 & Rajah 3)
+              // Komponen Kepala Surat Rasmi JPK Penuh (Muka Surat Pertama)
               const renderJpkHeader = (formTitle, docCode, pageText = "") => (
                 <div className="mb-2">
                   <div className="flex items-start justify-between">
@@ -3097,12 +3377,12 @@
                       <tr>
                         <td className="font-bold w-40 py-0.5">NAMA AGENSI</td>
                         <td className="font-bold w-3 py-0.5">:</td>
-                        <td className="font-bold uppercase py-0.5" colSpan="4">{agencyName}</td>
+                        <td className="font-bold uppercase py-0.5" colSpan="4">{agencyName || "-"}</td>
                       </tr>
                       <tr>
                         <td className="font-bold w-40 py-0.5">NAMA PROGRAM AGENSI</td>
                         <td className="font-bold w-3 py-0.5">:</td>
-                        <td className="font-bold uppercase py-0.5 pr-4">{programName}</td>
+                        <td className="font-bold uppercase py-0.5 pr-4">{programName || "-"}</td>
                         <td className="font-bold w-36 py-0.5">TAJUK SKPK (NOSS)</td>
                         <td className="font-bold w-3 py-0.5">:</td>
                         <td className="font-bold uppercase py-0.5">{skpkTitleStr}</td>
@@ -3117,6 +3397,36 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              );
+
+              // Komponen Kepala Ringkas Rasmi (Mini Running Header untuk Muka Sambungan 2/N, 3/N)
+              const renderJpkMiniHeader = (docCode, pageText) => (
+                <div className="mb-2 border-b-[1.5px] border-black pb-1.5 flex items-center justify-between gap-4">
+                  <div className="text-[7.5pt] space-y-0.5 flex-1">
+                    <div>
+                      <span className="font-bold">PROGRAM AGENSI :</span>{" "}
+                      <span className="uppercase">{programCode ? `${programCode} - ` : ""}{programName || "-"}</span>
+                    </div>
+                    <div>
+                      <span className="font-bold">SKPK (NOSS) :</span>{" "}
+                      <span className="uppercase">{skpkCodeStr} ({skpkTitleStr})</span>
+                    </div>
+                  </div>
+                  <div className="w-44 flex flex-col items-end shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[7.5pt] font-semibold">Muka Surat</span>
+                      <div
+                        className="w-20 h-6 border-[1.5px] border-black relative flex items-center justify-center font-bold text-[7.5pt]"
+                        style={{
+                          background: "linear-gradient(to top left, transparent calc(50% - 0.8px), #000 50%, transparent calc(50% + 0.8px))"
+                        }}
+                      >
+                        <span className="bg-white/90 px-1 font-mono">{pageText}</span>
+                      </div>
+                    </div>
+                    <div className="font-bold text-[7.5pt] mt-0.5">{docCode}</div>
+                  </div>
                 </div>
               );
 
@@ -3155,7 +3465,7 @@
               return (
                 <>
                   {/* ===========================================================
-                      SET 1: JPK/PEMETAAN/02-A (MATRIKS PEMETAAN - PECAHAN IKUT CU)
+                      SET 1: JPK/PEMETAAN/02-A (MATRIKS PEMETAAN - PECAHAN IKUT CU + RUJUKAN SILANG CUx-WAx)
                   =========================================================== */}
                   {(printFilter === "ALL" || printFilter === "02A") && allCUsFlat.map(({ prog, cu }, cuIdx) => {
                     const cuKey = `${prog.code}-${cu.id}`;
@@ -3181,15 +3491,18 @@
                                   background: "linear-gradient(to top right, transparent calc(50% - 0.8px), #000 50%, transparent calc(50% + 0.8px))"
                                 }}
                               >
-                                <div className="flex flex-col justify-between h-24">
+                                <div className="flex flex-col justify-between h-32">
                                   <span className="text-right font-bold text-[7pt] pr-1">SKPK (NOSS)</span>
                                   <span className="text-left font-bold text-[7pt] pl-1">MODUL / KURIKULUM AGENSI</span>
                                 </div>
                               </th>
                               {cu.was.map(wa => (
-                                <th key={wa.id} className="text-center p-1 w-10">
-                                  <div className="jpk-va-header">
-                                    <strong>{wa.id}.</strong> {wa.title}
+                                <th key={wa.id} className="text-center p-1 w-12 min-w-[46px] max-w-[46px]">
+                                  <div
+                                    className="jpk-va-header"
+                                    style={{ fontSize: (wa.title || "").length > 65 ? "6pt" : (wa.title || "").length > 38 ? "6.5pt" : "7.2pt" }}
+                                  >
+                                    <span><strong>{wa.id}.</strong> {wa.title}</span>
                                   </div>
                                 </th>
                               ))}
@@ -3208,33 +3521,81 @@
                             </tr>
                           </thead>
                           <tbody>
-                            {modules.map((mod, mIdx) => (
-                              <React.Fragment key={`m02-${mod.id}`}>
-                                <tr className="bg-slate-100 font-bold">
-                                  <td className="text-center w-8">{mIdx + 1}</td>
-                                  <td>{mod.code} - {mod.title}</td>
-                                  {cu.was.map(wa => (
-                                    <td key={`mc-${wa.id}`} className="bg-slate-200/50"></td>
-                                  ))}
-                                </tr>
-                                {(mod.subModules || []).map((sm, sIdx) => (
-                                  <tr key={`sm02-${sm.subId}`}>
-                                    <td className="text-center font-mono text-[7pt]">{mIdx + 1}.{sIdx + 1}</td>
-                                    <td className="pl-3">{sm.code}: {sm.name}</td>
-                                    {cu.was.map(wa => {
-                                      const gId = `${cu.id}-${wa.id}`;
-                                      const fullId = `${prog.code}-${gId}`;
-                                      const isTicked = (sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullId);
-                                      return (
-                                        <td key={`cell-${wa.id}`} className="text-center font-bold text-[8.5pt]">
-                                          {isTicked ? "X" : ""}
-                                        </td>
-                                      );
-                                    })}
+                            {modules.map((mod, mIdx) => {
+                              // Kumpulkan rujukan silang CUx-WAx di luar CU helaian semasa bagi seluruh modul ini
+                              const modOtherRefsSet = new Set();
+                              (mod.subModules || []).forEach(sm => {
+                                (sm.matchedWAs || []).forEach(wRef => {
+                                  const cleanRef = wRef.replace(`${prog.code}-`, "");
+                                  if (!cleanRef.startsWith(`${cu.id}-`)) {
+                                    modOtherRefsSet.add(cleanRef);
+                                  }
+                                });
+                              });
+                              const modOtherRefs = Array.from(modOtherRefsSet);
+
+                              return (
+                                <React.Fragment key={`m02-${mod.id}`}>
+                                  <tr className="bg-slate-100 font-bold">
+                                    <td className="text-center w-8">{mIdx + 1}</td>
+                                    <td>
+                                      <div className="flex flex-wrap items-center justify-between gap-1">
+                                        <span>{mod.code} - {mod.title}</span>
+                                        {modOtherRefs.length > 0 && (
+                                          <span className="inline-flex flex-wrap gap-0.5">
+                                            {modOtherRefs.map(ref => (
+                                              <span key={ref} className="border border-black bg-white px-1 py-0 text-[6pt] font-mono">
+                                                {ref}
+                                              </span>
+                                            ))}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    {cu.was.map(wa => (
+                                      <td key={`mc-${wa.id}`} className="bg-slate-200/50"></td>
+                                    ))}
                                   </tr>
-                                ))}
-                              </React.Fragment>
-                            ))}
+                                  {(mod.subModules || []).map((sm, sIdx) => {
+                                    const subOtherRefs = Array.from(new Set(
+                                      (sm.matchedWAs || [])
+                                        .map(wRef => wRef.replace(`${prog.code}-`, ""))
+                                        .filter(cleanRef => !cleanRef.startsWith(`${cu.id}-`))
+                                    ));
+
+                                    return (
+                                      <tr key={`sm02-${sm.subId}`}>
+                                        <td className="text-center font-mono text-[7pt]">{mIdx + 1}.{sIdx + 1}</td>
+                                        <td className="pl-3">
+                                          <div className="flex flex-wrap items-center justify-between gap-1">
+                                            <span>{sm.code}: {sm.name}</span>
+                                            {subOtherRefs.length > 0 && (
+                                              <span className="inline-flex flex-wrap gap-0.5">
+                                                {subOtherRefs.map(ref => (
+                                                  <span key={ref} className="border border-slate-700 bg-slate-50 px-1 py-0 text-[6pt] font-mono font-bold">
+                                                    {ref}
+                                                  </span>
+                                                ))}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </td>
+                                        {cu.was.map(wa => {
+                                          const gId = `${cu.id}-${wa.id}`;
+                                          const fullId = `${prog.code}-${gId}`;
+                                          const isTicked = (sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullId);
+                                          return (
+                                            <td key={`cell-${wa.id}`} className="text-center font-bold text-[8.5pt]">
+                                              {isTicked ? "X" : ""}
+                                            </td>
+                                          );
+                                        })}
+                                      </tr>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              );
+                            })}
                             <tr className="bg-slate-100 font-bold">
                               <td colSpan="2" className="text-right">BILANGAN WA DIPENUHI (%) :</td>
                               <td colSpan={cu.was.length} className="text-center">
@@ -3248,440 +3609,637 @@
                   })}
 
                   {/* ===========================================================
-                      SET 2: JPK/PEMETAAN/03 (PADANAN KANDUNGAN - PECAHAN SETIAP CU)
+                      SET 2: JPK/PEMETAAN/03 (PEMBAHAGIAN HALAMAN PINTAR PER CU + MINI HEADER)
                   =========================================================== */}
-                  {(printFilter === "ALL" || printFilter === "03") && allCUsFlat.map(({ prog, cu }, cuIdx) => {
+                  {(printFilter === "ALL" || printFilter === "03") && allCUsFlat.map(({ prog, cu }) => {
                     const cuKey = `${prog.code}-${cu.id}`;
-                    // Anggaran bilangan muka surat bagi CU ini (~5 WA per halaman A4 Landscape)
-                    const estPagesInCu = Math.max(1, Math.ceil(cu.was.length / 5));
 
-                    return (
-                      <div key={`p03-${cuKey}`} className="jpk-page-break">
+                    // Bahagikan senarai WA bagi CU ini kepada helaian-helaian (chunks) berdasarkan anggaran ketinggian teks
+                    const waChunks = [];
+                    let currentChunk = [];
+                    let currentWeight = 0;
+                    const MAX_PAGE_WEIGHT = 1650; // Kapasiti anggaran aksara/baris bagi satu halaman A4 Landscape
+
+                    cu.was.forEach(wa => {
+                      const gId = `${cu.id}-${wa.id}`;
+                      const fullWaKey = `${prog.code}-${gId}`;
+                      const matchingSubs = [];
+                      modules.forEach(m => {
+                        m.subModules.forEach(sm => {
+                          if ((sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullWaKey)) {
+                            matchingSubs.push({ mod: m, sub: sm });
+                          }
+                        });
+                      });
+
+                      const textLen = Math.max((wa.rk || "").length, (wa.rs || "").length, 180);
+                      const subWeight = Math.max(1, matchingSubs.length) * 140;
+                      const itemWeight = textLen + subWeight;
+
+                      if (currentChunk.length > 0 && currentWeight + itemWeight > MAX_PAGE_WEIGHT) {
+                        waChunks.push(currentChunk);
+                        currentChunk = [{ wa, matchingSubs, fullWaKey, gId }];
+                        currentWeight = itemWeight;
+                      } else {
+                        currentChunk.push({ wa, matchingSubs, fullWaKey, gId });
+                        currentWeight += itemWeight;
+                      }
+                    });
+                    if (currentChunk.length > 0) waChunks.push(currentChunk);
+
+                    const totalCuPages = Math.max(1, waChunks.length);
+
+                    return waChunks.map((chunk, pageIdx) => {
+                      const pageNum = pageIdx + 1;
+                      const pageLabel = `${pageNum} / ${totalCuPages}`;
+
+                      return (
+                        <div key={`p03-${cuKey}-pg${pageNum}`} className="jpk-page-break">
+                          {pageNum === 1 ? (
+                            renderJpkHeader(
+                              "BORANG PEMETAAN KANDUNGAN KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
+                              "JPK/PEMETAAN/03",
+                              pageLabel
+                            )
+                          ) : (
+                            renderJpkMiniHeader(`JPK/PEMETAAN/03 (Samb. ${cu.id})`, pageLabel)
+                          )}
+
+                          <table className="jpk-table">
+                            <thead>
+                              <tr className="bg-slate-100 font-bold">
+                                <th colSpan="11" className="text-left text-[8pt]">
+                                  CU : {cu.id} - {cu.title} {isMultiProgram ? `(${prog.code})` : ""} {pageNum > 1 ? "(Sambungan)" : ""}
+                                </th>
+                              </tr>
+                              <tr className="bg-slate-100 font-bold text-center">
+                                <th colSpan="3">CURRICULUM OF COMPETENCY UNIT (COCU) / TASK PROFILE</th>
+                                <th colSpan="5">KURIKULUM PROGRAM AGENSI</th>
+                                <th colSpan="2">Memenuhi NOSS (Tandakan /)</th>
+                                <th rowSpan="2" className="w-32">CATATAN (GAP)</th>
+                              </tr>
+                              <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                                <th className="w-24">Work Activities (WA)</th>
+                                <th className="w-40">Related Knowledge</th>
+                                <th className="w-40">Applied Skills</th>
+                                <th className="w-24">Module</th>
+                                <th className="w-32">Knowledge / Sub Topic</th>
+                                <th className="w-12">Training Duration</th>
+                                <th className="w-32">Applied Skills</th>
+                                <th className="w-12">Training Duration</th>
+                                <th className="w-9">Ya</th>
+                                <th className="w-9">Tidak</th>
+                              </tr>
+                            </thead>
+                            {chunk.map(({ wa, matchingSubs, fullWaKey, gId }) => {
+                              const defaultFulfilled = matchingSubs.length > 0;
+                              const isFulfilled = manualCompliance[fullWaKey] !== undefined ? manualCompliance[fullWaKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultFulfilled);
+                              const remarkText = gapRemarks[fullWaKey] !== undefined ? gapRemarks[fullWaKey] : (gapRemarks[gId] !== undefined ? gapRemarks[gId] : (isFulfilled ? "Memenuhi standard minimum." : "Kandungan tiada dalam modul agensi."));
+                              const isMultiSub = matchingSubs.length > 1;
+                              const printRkPct = matchingSubs.length > 0 ? (waContentCoverage[fullWaKey]?.rkPct ?? (isFulfilled ? 100 : 0)) : 0;
+                              const printRsPct = matchingSubs.length > 0 ? (waContentCoverage[fullWaKey]?.rsPct ?? (isFulfilled ? 100 : 0)) : 0;
+
+                              return (
+                                <tbody key={`p03-wa-${wa.id}`} className={isMultiSub ? "jpk-wa-multi" : "jpk-wa-single"}>
+                                  <tr>
+                                    <td className="text-left">
+                                      <div className="font-bold">{wa.id}</div>
+                                      <div className="text-[7pt] mt-0.5">{wa.title}</div>
+                                    </td>
+                                    <td>
+                                      <div>{wa.rk}</div>
+                                      <div className="font-bold mt-1">({wa.rkHours} Jam)</div>
+                                      <div className="text-[6.5pt] font-semibold mt-0.5">Pemenuhan Kandungan (Agensi): {printRkPct}%</div>
+                                    </td>
+                                    <td>
+                                      <div>{wa.rs}</div>
+                                      <div className="font-bold mt-1">({wa.rsHours} Jam)</div>
+                                      <div className="text-[6.5pt] font-semibold mt-0.5">Pemenuhan Kandungan (Agensi): {printRsPct}%</div>
+                                    </td>
+
+                                    {matchingSubs.length > 0 ? (
+                                      <>
+                                        <td>
+                                          <div className="font-bold">{matchingSubs[0].mod.code}</div>
+                                          <div>{matchingSubs[0].sub.name}</div>
+                                        </td>
+                                        <td>{matchingSubs[0].sub.knowledge}</td>
+                                        <td className="text-center font-bold">{matchingSubs[0].sub.rkHours} Jam</td>
+                                        <td>{matchingSubs[0].sub.skills}</td>
+                                        <td className="text-center font-bold">{matchingSubs[0].sub.rsHours} Jam</td>
+                                      </>
+                                    ) : (
+                                      <td colSpan="5" className="text-center italic text-slate-600">Tiada modul agensi dipadankan</td>
+                                    )}
+
+                                    <td className="text-center font-bold text-[9pt]">{isFulfilled ? "/" : ""}</td>
+                                    <td className="text-center font-bold text-[9pt]">{!isFulfilled ? "/" : ""}</td>
+                                    <td>{remarkText}</td>
+                                  </tr>
+
+                                  {matchingSubs.slice(1).map((item, sIdx) => (
+                                    <tr key={`p03-sub-${sIdx}`}>
+                                      <td className="text-left bg-slate-50">
+                                        <div className="font-bold text-[7pt]">{wa.id} (Samb.)</div>
+                                      </td>
+                                      <td className="bg-slate-50 text-[6.5pt] italic text-slate-500">Rujuk {wa.id}</td>
+                                      <td className="bg-slate-50 text-[6.5pt] italic text-slate-500">Rujuk {wa.id}</td>
+                                      <td>
+                                        <div className="font-bold">{item.mod.code}</div>
+                                        <div>{item.sub.name}</div>
+                                      </td>
+                                      <td>{item.sub.knowledge}</td>
+                                      <td className="text-center font-bold">{item.sub.rkHours} Jam</td>
+                                      <td>{item.sub.skills}</td>
+                                      <td className="text-center font-bold">{item.sub.rsHours} Jam</td>
+                                      <td className="text-center font-bold">{isFulfilled ? "/" : ""}</td>
+                                      <td className="text-center font-bold">{!isFulfilled ? "/" : ""}</td>
+                                      <td></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              );
+                            })}
+                          </table>
+                        </div>
+                      );
+                    });
+                  })}
+
+                  {/* ===========================================================
+                      SET 3: JPK/PEMETAAN/04-A (SUSUNAN 2 MUKA SURAT RASMI: 1/2 & 2/2)
+                  =========================================================== */}
+                  {(printFilter === "ALL" || printFilter === "04AB") && (
+                    <>
+                      {/* MUKA SURAT 1 / 2: KEPALA SURAT PENUH + JADUAL PECAHAN CU */}
+                      <div className="jpk-page-break">
                         {renderJpkHeader(
-                          "BORANG PEMETAAN KANDUNGAN KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
-                          "JPK/PEMETAAN/03",
-                          estPagesInCu === 1 ? "1 / 1" : `1 / ${estPagesInCu}`
+                          "BORANG RUMUSAN PEMETAAN KENDIRI KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
+                          "JPK/PEMETAAN/04-A",
+                          "1 / 2"
                         )}
 
                         <table className="jpk-table">
                           <thead>
-                            <tr className="bg-slate-100 font-bold">
-                              <th colSpan="11" className="text-left text-[8pt]">
-                                CU : {cu.id} - {cu.title} {isMultiProgram ? `(${prog.code})` : ""}
-                              </th>
+                            <tr className="bg-slate-100 font-bold text-center text-[6.8pt]">
+                              <th rowSpan="2" className="w-32">CU / DUTY</th>
+                              <th rowSpan="2" className="w-20">BIL. WA / TASK (A)</th>
+                              <th rowSpan="2" className="w-20">BIL. WA / TASK DIPENUHI (B)</th>
+                              <th rowSpan="2" className="w-24">% WA / TASK DIPENUHI [(B/A) × 100]</th>
+                              <th rowSpan="2" className="w-28">NAMA WA / TASK TIDAK DIPENUHI</th>
+                              <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                              <th rowSpan="2">CADANGAN JAWATANKUASA PEMETAAN</th>
                             </tr>
-                            <tr className="bg-slate-100 font-bold text-center">
-                              <th colSpan="3">CURRICULUM OF COMPETENCY UNIT (COCU) / TASK PROFILE</th>
-                              <th colSpan="5">KURIKULUM PROGRAM AGENSI</th>
-                              <th colSpan="2">Memenuhi NOSS (Tandakan /)</th>
-                              <th rowSpan="2" className="w-32">CATATAN (GAP)</th>
-                            </tr>
-                            <tr className="bg-slate-50 font-bold text-center text-[7pt]">
-                              <th className="w-24">Work Activities (WA)</th>
-                              <th className="w-36">Related Knowledge</th>
-                              <th className="w-36">Applied Skills</th>
-                              <th className="w-24">Module</th>
-                              <th className="w-32">Knowledge / Sub Topic</th>
-                              <th className="w-12">Training Duration</th>
-                              <th className="w-32">Applied Skills</th>
-                              <th className="w-12">Training Duration</th>
-                              <th className="w-9">Ya</th>
-                              <th className="w-9">Tidak</th>
+                            <tr className="bg-slate-50 font-bold text-center text-[6.8pt]">
+                              <th className="w-28">SKPK (NOSS)</th>
+                              <th className="w-28">KURIKULUM AGENSI</th>
                             </tr>
                           </thead>
-                          {cu.was.map(wa => {
-                            const gId = `${cu.id}-${wa.id}`;
-                            const fullWaKey = `${prog.code}-${gId}`;
-                            const matchingSubs = [];
-                            modules.forEach(m => {
-                              m.subModules.forEach(sm => {
-                                if ((sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullWaKey)) {
-                                  matchingSubs.push({ mod: m, sub: sm });
+                          <tbody>
+                            {allCUsFlat.map(({ prog, cu }) => {
+                              const cuKey = `${prog.code}-${cu.id}`;
+                              const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
+                              const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
+                              const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
+                              let agRkH = 0, agRsH = 0;
+                              modules.forEach(m => m.subModules.forEach(sm => {
+                                if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
+                                  agRkH += Number(sm.rkHours) || 0;
+                                  agRsH += Number(sm.rsHours) || 0;
                                 }
-                              });
-                            });
-                            const defaultFulfilled = matchingSubs.length > 0;
-                            const isFulfilled = manualCompliance[fullWaKey] !== undefined ? manualCompliance[fullWaKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : defaultFulfilled);
-                            const remarkText = gapRemarks[fullWaKey] !== undefined ? gapRemarks[fullWaKey] : (gapRemarks[gId] !== undefined ? gapRemarks[gId] : (isFulfilled ? "Memenuhi standard minimum." : "Kandungan tiada dalam modul agensi."));
-                            const isMultiSub = matchingSubs.length > 1;
+                              }));
 
-                            return (
-                              <tbody key={`p03-wa-${wa.id}`} className={isMultiSub ? "jpk-wa-multi" : "jpk-wa-single"}>
-                                <tr>
-                                  <td className="text-left">
-                                    <div className="font-bold">{wa.id}</div>
-                                    <div className="text-[7pt] mt-0.5">{wa.title}</div>
+                              return (
+                                <tr key={`p04a-${cuKey}`}>
+                                  <td className="font-bold">{cu.id}: {cu.title}</td>
+                                  <td className="text-center">{st.totalWA}</td>
+                                  <td className="text-center">{st.metWA}</td>
+                                  <td className="text-center font-bold">{st.pct}%</td>
+                                  <td className="text-center">{st.missingWAs.length === 0 ? "-" : st.missingWAs.map(w => w.id).join(", ")}</td>
+                                  <td className="text-[7pt]">
+                                    <div>Knowledge = {nossRkH} Hours</div>
+                                    <div>Skills = {nossRsH} Hours</div>
                                   </td>
-                                  <td>
-                                    <div>{wa.rk}</div>
-                                    <div className="font-bold mt-1">({wa.rkHours} Jam)</div>
+                                  <td className="text-[7pt]">
+                                    <div>Knowledge = {agRkH} Hours</div>
+                                    <div>Skills = {agRsH} Hours</div>
                                   </td>
-                                  <td>
-                                    <div>{wa.rs}</div>
-                                    <div className="font-bold mt-1">({wa.rsHours} Jam)</div>
-                                  </td>
-
-                                  {matchingSubs.length > 0 ? (
-                                    <>
-                                      <td>
-                                        <div className="font-bold">{matchingSubs[0].mod.code}</div>
-                                        <div>{matchingSubs[0].sub.name}</div>
-                                      </td>
-                                      <td>{matchingSubs[0].sub.knowledge}</td>
-                                      <td className="text-center font-bold">{matchingSubs[0].sub.rkHours} Jam</td>
-                                      <td>{matchingSubs[0].sub.skills}</td>
-                                      <td className="text-center font-bold">{matchingSubs[0].sub.rsHours} Jam</td>
-                                    </>
-                                  ) : (
-                                    <td colSpan="5" className="text-center italic text-slate-600">Tiada modul agensi dipadankan</td>
-                                  )}
-
-                                  <td className="text-center font-bold text-[9pt]">{isFulfilled ? "/" : ""}</td>
-                                  <td className="text-center font-bold text-[9pt]">{!isFulfilled ? "/" : ""}</td>
-                                  <td>{remarkText}</td>
+                                  <td>{committeeRemarks[cuKey] || ""}</td>
                                 </tr>
-
-                                {matchingSubs.slice(1).map((item, sIdx) => (
-                                  <tr key={`p03-sub-${sIdx}`}>
-                                    <td className="text-left bg-slate-50">
-                                      <div className="font-bold text-[7pt]">{wa.id} (Samb.)</div>
-                                    </td>
-                                    <td className="bg-slate-50 text-[6.5pt] italic text-slate-500">Rujuk {wa.id}</td>
-                                    <td className="bg-slate-50 text-[6.5pt] italic text-slate-500">Rujuk {wa.id}</td>
-                                    <td>
-                                      <div className="font-bold">{item.mod.code}</div>
-                                      <div>{item.sub.name}</div>
-                                    </td>
-                                    <td>{item.sub.knowledge}</td>
-                                    <td className="text-center font-bold">{item.sub.rkHours} Jam</td>
-                                    <td>{item.sub.skills}</td>
-                                    <td className="text-center font-bold">{item.sub.rsHours} Jam</td>
-                                    <td className="text-center font-bold">{isFulfilled ? "/" : ""}</td>
-                                    <td className="text-center font-bold">{!isFulfilled ? "/" : ""}</td>
-                                    <td></td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            );
-                          })}
+                              );
+                            })}
+                            <tr className="bg-slate-100 font-bold">
+                              <td colSpan="3" className="text-right">JUMLAH % KESELURUHAN :</td>
+                              <td className="text-center">{overallAvgPct}%</td>
+                              <td colSpan="4" className="text-[6.5pt] font-normal italic">(Formula: Jumlah % WA dipenuhi / bilangan CU)</td>
+                            </tr>
+                          </tbody>
                         </table>
                       </div>
-                    );
-                  })}
 
-                  {/* ===========================================================
-                      SET 3: JPK/PEMETAAN/04-A (BORANG RUMUSAN PEMETAAN KENDIRI AGENSI)
-                  =========================================================== */}
-                  {(printFilter === "ALL" || printFilter === "04AB") && (
-                    <div className="jpk-page-break">
-                      {renderJpkHeader(
-                        "BORANG RUMUSAN PEMETAAN KENDIRI KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
-                        "JPK/PEMETAAN/04-A",
-                        "1 / 1"
-                      )}
+                      {/* MUKA SURAT 2 / 2: MINI HEADER + RUMUSAN PROGRAM AGENSI + TANDATANGAN PENGESAHAN */}
+                      <div className="jpk-page-break">
+                        {renderJpkMiniHeader("JPK/PEMETAAN/04-A", "2 / 2")}
 
-                      {/* Jadual Bahagian 1: Pecahan CU */}
-                      <table className="jpk-table mb-2">
-                        <thead>
-                          <tr className="bg-slate-100 font-bold text-center">
-                            <th rowSpan="2" className="w-28">CU/DUTY</th>
-                            <th rowSpan="2" className="w-16">BIL WORK ACTIVITY (WA)/TASK (A)</th>
-                            <th rowSpan="2" className="w-16">BIL WA/TASK DIPENUHI (B)</th>
-                            <th rowSpan="2" className="w-20">% WA/TASK DIPENUHI [(B/A)*100]</th>
-                            <th rowSpan="2" className="w-28">NAMA WA/TASK TIDAK DIPENUHI</th>
-                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
-                            <th rowSpan="2">CADANGAN JAWATANKUASA PEMETAAN</th>
-                          </tr>
-                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
-                            <th className="w-28">SKPK (NOSS)</th>
-                            <th className="w-28">KURIKULUM AGENSI</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {allCUsFlat.map(({ prog, cu }) => {
-                            const cuKey = `${prog.code}-${cu.id}`;
-                            const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
-                            const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
-                            const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
-                            let agRkH = 0, agRsH = 0;
-                            modules.forEach(m => m.subModules.forEach(sm => {
-                              if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
-                                agRkH += Number(sm.rkHours) || 0;
-                                agRsH += Number(sm.rsHours) || 0;
-                              }
-                            }));
+                        <table className="jpk-table mb-3">
+                          <thead>
+                            <tr className="bg-slate-100 font-bold text-center text-[7pt]">
+                              <th rowSpan="2" className="w-72">PROGRAM AGENSI (SILIBUS / MODUL / KURIKULUM)</th>
+                              <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                              <th rowSpan="2">CADANGAN JAWATANKUASA PEMETAAN</th>
+                            </tr>
+                            <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                              <th className="w-36">SKPK (NOSS)</th>
+                              <th className="w-36">KURIKULUM AGENSI</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td>
+                                {modules.length > 0 ? (
+                                  <ol className="list-decimal pl-4 space-y-0.5 text-[7.5pt]">
+                                    {modules.map(m => <li key={m.id}>{m.code}: {m.title}</li>)}
+                                  </ol>
+                                ) : "-"}
+                              </td>
+                              <td className="text-[7.5pt]">
+                                <div>Knowledge = {grandNossRk} Hours</div>
+                                <div>Skills = {grandNossRs} Hours</div>
+                              </td>
+                              <td className="text-[7.5pt]">
+                                <div>Knowledge = {grandAgensiRk} Hours</div>
+                                <div>Skills = {grandAgensiRs} Hours</div>
+                              </td>
+                              <td></td>
+                            </tr>
+                          </tbody>
+                        </table>
 
-                            return (
-                              <tr key={`p04a-${cuKey}`}>
-                                <td className="font-bold">{cu.id}: {cu.title}</td>
-                                <td className="text-center">{st.totalWA}</td>
-                                <td className="text-center">{st.metWA}</td>
-                                <td className="text-center font-bold">{st.pct}%</td>
-                                <td className="text-center">{st.missingWAs.length === 0 ? "-" : st.missingWAs.map(w => w.id).join(", ")}</td>
-                                <td className="text-[7pt]">
-                                  <div>Knowledge = {nossRkH} Hours</div>
-                                  <div>Skills = {nossRsH} Hours</div>
-                                </td>
-                                <td className="text-[7pt]">
-                                  <div>Knowledge = {agRkH} Hours</div>
-                                  <div>Skills = {agRsH} Hours</div>
-                                </td>
-                                <td>{committeeRemarks[cuKey] || ""}</td>
+                        <div className="jpk-sign-box space-y-3">
+                          <table className="jpk-table">
+                            <tbody>
+                              <tr>
+                                <td className="font-bold bg-slate-100">ULASAN KESELURUHAN JAWATANKUASA PEMETAAN KENDIRI AGENSI :</td>
                               </tr>
-                            );
-                          })}
-                          <tr className="bg-slate-100 font-bold">
-                            <td colSpan="3" className="text-right">JUMLAH % KESELURUHAN :</td>
-                            <td className="text-center">{overallAvgPct}%</td>
-                            <td colSpan="4" className="text-[6.5pt] font-normal italic">(Formula: Jumlah % WA dipenuhi / bilangan CU)</td>
-                          </tr>
-                        </tbody>
-                      </table>
+                              <tr>
+                                <td className="h-16">{overallRemarks04A}</td>
+                              </tr>
+                            </tbody>
+                          </table>
 
-                      {/* Jadual Bahagian 2: Rumusan Keseluruhan Program Agensi */}
-                      <table className="jpk-table mb-2">
-                        <thead>
-                          <tr className="bg-slate-100 font-bold text-center">
-                            <th rowSpan="2" className="w-64">PROGRAM AGENSI (SILIBUS/MODUL/KURIKULUM)</th>
-                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
-                            <th rowSpan="2">CADANGAN JAWATANKUASA PEMETAAN</th>
-                          </tr>
-                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
-                            <th className="w-32">SKPK (NOSS)</th>
-                            <th className="w-32">KURIKULUM AGENSI</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>
-                              {modules.length > 0 ? (
-                                <ol className="list-decimal pl-4 space-y-0.5 text-[7pt]">
-                                  {modules.map(m => <li key={m.id}>{m.code}: {m.title}</li>)}
-                                </ol>
-                              ) : "-"}
-                            </td>
-                            <td className="text-[7pt]">
-                              <div>Knowledge = {grandNossRk} Hours</div>
-                              <div>Skills = {grandNossRs} Hours</div>
-                            </td>
-                            <td className="text-[7pt]">
-                              <div>Knowledge = {grandAgensiRk} Hours</div>
-                              <div>Skills = {grandAgensiRs} Hours</div>
-                            </td>
-                            <td></td>
-                          </tr>
-                        </tbody>
-                      </table>
-
-                      {/* Ulasan Keseluruhan & Tandatangan Pengesahan JPK 04-A */}
-                      <div className="jpk-sign-box space-y-2">
-                        <table className="jpk-table">
-                          <tbody>
-                            <tr>
-                              <td className="font-bold bg-slate-100">ULASAN KESELURUHAN JAWATANKUASA PEMETAAN KENDIRI AGENSI :</td>
-                            </tr>
-                            <tr>
-                              <td className="h-12">{overallRemarks04A}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-
-                        <div className="font-bold text-[8pt] pt-1">PENGESAHAN JAWATANKUASA PEMETAAN KENDIRI AGENSI</div>
-                        <table className="jpk-table">
-                          <tbody>
-                            <tr>
-                              <td className="w-1/3 p-2">
-                                <div className="font-bold text-center mb-8">(AHLI 1)</div>
-                                <div>TANDATANGAN : ________________________</div>
-                                <div className="mt-1">NAMA : {signatories04A.ahli1Name || "_________________________________"}</div>
-                                <div className="mt-1">NO KAD PENGENALAN : {signatories04A.ahli1Ic || "____________________"}</div>
-                                <div className="mt-1">TARIKH : {signatories04A.ahli1Date || "_______________________________"}</div>
-                              </td>
-                              <td className="w-1/3 p-2">
-                                <div className="font-bold text-center mb-8">(AHLI 2)</div>
-                                <div>TANDATANGAN : ________________________</div>
-                                <div className="mt-1">NAMA : {signatories04A.ahli2Name || "_________________________________"}</div>
-                                <div className="mt-1">NO KAD PENGENALAN : {signatories04A.ahli2Ic || "____________________"}</div>
-                                <div className="mt-1">TARIKH : {signatories04A.ahli2Date || "_______________________________"}</div>
-                              </td>
-                              <td className="w-1/3 p-2">
-                                <div className="font-bold text-center mb-8">(PENGERUSI)</div>
-                                <div>TANDATANGAN : ________________________</div>
-                                <div className="mt-1">NAMA : {signatories04A.chairName || "_________________________________"}</div>
-                                <div className="mt-1">NO KAD PENGENALAN : {signatories04A.chairIc || "____________________"}</div>
-                                <div className="mt-1">TARIKH : {signatories04A.chairDate || "_______________________________"}</div>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
+                          <div className="font-bold text-[8pt] pt-1">PENGESAHAN JAWATANKUASA PEMETAAN KENDIRI AGENSI</div>
+                          <table className="jpk-table">
+                            <tbody>
+                              <tr>
+                                <td className="w-1/3 p-2.5">
+                                  <div className="font-bold text-center mb-10">(AHLI 1)</div>
+                                  <div>TANDATANGAN : ________________________</div>
+                                  <div className="mt-1.5">NAMA : {signatories04A.ahli1Name || "_________________________________"}</div>
+                                  <div className="mt-1.5">NO KAD PENGENALAN : {signatories04A.ahli1Ic || "____________________"}</div>
+                                  <div className="mt-1.5">TARIKH : {signatories04A.ahli1Date || "_______________________________"}</div>
+                                </td>
+                                <td className="w-1/3 p-2.5">
+                                  <div className="font-bold text-center mb-10">(AHLI 2)</div>
+                                  <div>TANDATANGAN : ________________________</div>
+                                  <div className="mt-1.5">NAMA : {signatories04A.ahli2Name || "_________________________________"}</div>
+                                  <div className="mt-1.5">NO KAD PENGENALAN : {signatories04A.ahli2Ic || "____________________"}</div>
+                                  <div className="mt-1.5">TARIKH : {signatories04A.ahli2Date || "_______________________________"}</div>
+                                </td>
+                                <td className="w-1/3 p-2.5">
+                                  <div className="font-bold text-center mb-10">(PENGERUSI)</div>
+                                  <div>TANDATANGAN : ________________________</div>
+                                  <div className="mt-1.5">NAMA : {signatories04A.chairName || "_________________________________"}</div>
+                                  <div className="mt-1.5">NO KAD PENGENALAN : {signatories04A.chairIc || "____________________"}</div>
+                                  <div className="mt-1.5">TARIKH : {signatories04A.chairDate || "_______________________________"}</div>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
 
                   {/* ===========================================================
-                      SET 4: JPK/PEMETAAN/04-B (BORANG RUMUSAN PANEL PENILAI PPPPA)
+                      SET 4: JPK/PEMETAAN/04-B (SUSUNAN 2 MUKA SURAT RASMI: 1/2 & 2/2)
                   =========================================================== */}
                   {(printFilter === "ALL" || printFilter === "04AB") && (
-                    <div className="jpk-page-break">
-                      {renderJpkHeader(
-                        "BORANG RUMUSAN PEMETAAN KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
-                        "JPK/PEMETAAN/04-B",
-                        "1 / 1"
-                      )}
+                    <>
+                      {/* MUKA SURAT 1 / 2: KEPALA SURAT PENUH + JADUAL PECAHAN CU */}
+                      <div className="jpk-page-break">
+                        {renderJpkHeader(
+                          "BORANG RUMUSAN PEMETAAN KURIKULUM PROGRAM AGENSI BERDASARKAN STANDARD KEMAHIRAN PEKERJAAN KEBANGSAAN (SKPK)",
+                          "JPK/PEMETAAN/04-B",
+                          "1 / 2"
+                        )}
 
-                      {/* Jadual Bahagian 1: Pecahan CU */}
-                      <table className="jpk-table mb-2">
-                        <thead>
-                          <tr className="bg-slate-100 font-bold text-center">
-                            <th rowSpan="2" className="w-28">CU/DUTY</th>
-                            <th rowSpan="2" className="w-16">BIL WORK ACTIVITY (WA)/TASK (A)</th>
-                            <th rowSpan="2" className="w-16">BIL WA/TASK DIPENUHI (B)</th>
-                            <th rowSpan="2" className="w-20">% WA/TASK DIPENUHI [(B/A)*100]</th>
-                            <th rowSpan="2" className="w-28">NAMA WA/TASK TIDAK DIPENUHI</th>
-                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
-                            <th rowSpan="2">ULASAN PANEL JAWATANKUASA PENILAIAN PEMETAAN PROGRAM KEMAHIRAN</th>
-                          </tr>
-                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
-                            <th className="w-28">SKPK (NOSS)</th>
-                            <th className="w-28">KURIKULUM AGENSI</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {allCUsFlat.map(({ prog, cu }) => {
-                            const cuKey = `${prog.code}-${cu.id}`;
-                            const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
-                            const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
-                            const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
-                            let agRkH = 0, agRsH = 0;
-                            modules.forEach(m => m.subModules.forEach(sm => {
-                              if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
-                                agRkH += Number(sm.rkHours) || 0;
-                                agRsH += Number(sm.rsHours) || 0;
-                              }
-                            }));
-
-                            return (
-                              <tr key={`p04b-${cuKey}`}>
-                                <td className="font-bold">{cu.id}: {cu.title}</td>
-                                <td className="text-center">{st.totalWA}</td>
-                                <td className="text-center">{st.metWA}</td>
-                                <td className="text-center font-bold">{st.pct}%</td>
-                                <td className="text-center">{st.missingWAs.length === 0 ? "-" : st.missingWAs.map(w => w.id).join(", ")}</td>
-                                <td className="text-[7pt]">
-                                  <div>Knowledge = {nossRkH} Hours</div>
-                                  <div>Skills = {nossRsH} Hours</div>
-                                </td>
-                                <td className="text-[7pt]">
-                                  <div>Knowledge = {agRkH} Hours</div>
-                                  <div>Skills = {agRsH} Hours</div>
-                                </td>
-                                <td>{committeeRemarks[cuKey] || ""}</td>
-                              </tr>
-                            );
-                          })}
-                          <tr className="bg-slate-100 font-bold">
-                            <td colSpan="3" className="text-right">JUMLAH % KESELURUHAN :</td>
-                            <td className="text-center">{overallAvgPct}%</td>
-                            <td colSpan="4" className="text-[6.5pt] font-normal italic">(Formula: Jumlah % WA dipenuhi / bilangan CU)</td>
-                          </tr>
-                        </tbody>
-                      </table>
-
-                      {/* Jadual Bahagian 2: Rumusan Keseluruhan Program Agensi */}
-                      <table className="jpk-table mb-2">
-                        <thead>
-                          <tr className="bg-slate-100 font-bold text-center">
-                            <th rowSpan="2" className="w-64">PROGRAM AGENSI (SILIBUS/MODUL/KURIKULUM)</th>
-                            <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
-                            <th rowSpan="2">ULASAN PANEL JAWATANKUASA PENILAIAN PEMETAAN PROGRAM KEMAHIRAN</th>
-                          </tr>
-                          <tr className="bg-slate-50 font-bold text-center text-[7pt]">
-                            <th className="w-32">SKPK (NOSS)</th>
-                            <th className="w-32">KURIKULUM AGENSI</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>
-                              {modules.length > 0 ? (
-                                <ol className="list-decimal pl-4 space-y-0.5 text-[7pt]">
-                                  {modules.map(m => <li key={m.id}>{m.code}: {m.title}</li>)}
-                                </ol>
-                              ) : "-"}
-                            </td>
-                            <td className="text-[7pt]">
-                              <div>Knowledge = {grandNossRk} Hours</div>
-                              <div>Skills = {grandNossRs} Hours</div>
-                            </td>
-                            <td className="text-[7pt]">
-                              <div>Knowledge = {grandAgensiRk} Hours</div>
-                              <div>Skills = {grandAgensiRs} Hours</div>
-                            </td>
-                            <td></td>
-                          </tr>
-                        </tbody>
-                      </table>
-
-                      {/* Ulasan Keseluruhan, Syor Panel PPPPA & Tandatangan Pengesahan JPK 04-B */}
-                      <div className="jpk-sign-box space-y-2">
                         <table className="jpk-table">
+                          <thead>
+                            <tr className="bg-slate-100 font-bold text-center text-[6.8pt]">
+                              <th rowSpan="2" className="w-32">CU / DUTY</th>
+                              <th rowSpan="2" className="w-20">BIL. WA / TASK (A)</th>
+                              <th rowSpan="2" className="w-20">BIL. WA / TASK DIPENUHI (B)</th>
+                              <th rowSpan="2" className="w-24">% WA / TASK DIPENUHI [(B/A) × 100]</th>
+                              <th rowSpan="2" className="w-28">NAMA WA / TASK TIDAK DIPENUHI</th>
+                              <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                              <th rowSpan="2">ULASAN PANEL JAWATANKUASA PENILAIAN PEMETAAN PROGRAM KEMAHIRAN</th>
+                            </tr>
+                            <tr className="bg-slate-50 font-bold text-center text-[6.8pt]">
+                              <th className="w-28">SKPK (NOSS)</th>
+                              <th className="w-28">KURIKULUM AGENSI</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {allCUsFlat.map(({ prog, cu }) => {
+                              const cuKey = `${prog.code}-${cu.id}`;
+                              const st = allCuStats[cuKey] || { metWA: 0, totalWA: 0, pct: 0, missingWAs: [] };
+                              const nossRkH = cu.was.reduce((a, b) => a + (Number(b.rkHours) || 0), 0);
+                              const nossRsH = cu.was.reduce((a, b) => a + (Number(b.rsHours) || 0), 0);
+                              let agRkH = 0, agRsH = 0;
+                              modules.forEach(m => m.subModules.forEach(sm => {
+                                if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
+                                  agRkH += Number(sm.rkHours) || 0;
+                                  agRsH += Number(sm.rsHours) || 0;
+                                }
+                              }));
+
+                              return (
+                                <tr key={`p04b-${cuKey}`}>
+                                  <td className="font-bold">{cu.id}: {cu.title}</td>
+                                  <td className="text-center">{st.totalWA}</td>
+                                  <td className="text-center">{st.metWA}</td>
+                                  <td className="text-center font-bold">{st.pct}%</td>
+                                  <td className="text-center">{st.missingWAs.length === 0 ? "-" : st.missingWAs.map(w => w.id).join(", ")}</td>
+                                  <td className="text-[7pt]">
+                                    <div>Knowledge = {nossRkH} Hours</div>
+                                    <div>Skills = {nossRsH} Hours</div>
+                                  </td>
+                                  <td className="text-[7pt]">
+                                    <div>Knowledge = {agRkH} Hours</div>
+                                    <div>Skills = {agRsH} Hours</div>
+                                  </td>
+                                  <td>{committeeRemarks[cuKey] || ""}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="bg-slate-100 font-bold">
+                              <td colSpan="3" className="text-right">JUMLAH % KESELURUHAN :</td>
+                              <td className="text-center">{overallAvgPct}%</td>
+                              <td colSpan="4" className="text-[6.5pt] font-normal italic">(Formula: Jumlah % WA dipenuhi / bilangan CU)</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* MUKA SURAT 2 / 2: MINI HEADER + RUMUSAN PROGRAM AGENSI + SYOR PANEL + TANDATANGAN */}
+                      <div className="jpk-page-break">
+                        {renderJpkMiniHeader("JPK/PEMETAAN/04-B", "2 / 2")}
+
+                        <table className="jpk-table mb-3">
+                          <thead>
+                            <tr className="bg-slate-100 font-bold text-center text-[7pt]">
+                              <th rowSpan="2" className="w-72">PROGRAM AGENSI (SILIBUS / MODUL / KURIKULUM)</th>
+                              <th colSpan="2">TEMPOH LATIHAN (JAM)</th>
+                              <th rowSpan="2">ULASAN PANEL JAWATANKUASA PENILAIAN PEMETAAN PROGRAM KEMAHIRAN</th>
+                            </tr>
+                            <tr className="bg-slate-50 font-bold text-center text-[7pt]">
+                              <th className="w-36">SKPK (NOSS)</th>
+                              <th className="w-36">KURIKULUM AGENSI</th>
+                            </tr>
+                          </thead>
                           <tbody>
                             <tr>
-                              <td className="font-bold bg-slate-100">ULASAN KESELURUHAN :</td>
-                            </tr>
-                            <tr>
-                              <td className="h-10">{overallRemarks04B}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2">
-                                <div className="font-bold mb-1">SYOR PANEL PENILAI PEMETAAN PROGRAM AGENSI (PPPPA):</div>
-                                <div className="mb-1.5">Dengan ini Panel Penilai Pemetaan Program Agensi</div>
-                                <div className="flex items-center gap-6 font-bold mb-1.5">
-                                  <span className="inline-flex items-center gap-1.5">
-                                    <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "MEMPERAKU" ? "✓" : ""}</span>
-                                    <span>MEMPERAKU</span>
-                                  </span>
-                                  <span className="inline-flex items-center gap-1.5">
-                                    <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "BERSYARAT" ? "✓" : ""}</span>
-                                    <span>MEMPERAKU SECARA BERSYARAT</span>
-                                  </span>
-                                  <span className="inline-flex items-center gap-1.5">
-                                    <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "TIDAK" ? "✓" : ""}</span>
-                                    <span>TIDAK MEMPERAKU</span>
-                                  </span>
-                                </div>
-                                <div>
-                                  hasil pemetaan ini bagi program Agensi <strong>{programName}</strong> memenuhi NOSS <strong>{skpkCodeStr} - {skpkTitleStr}</strong>
-                                </div>
+                              <td>
+                                {modules.length > 0 ? (
+                                  <ol className="list-decimal pl-4 space-y-0.5 text-[7.5pt]">
+                                    {modules.map(m => <li key={m.id}>{m.code}: {m.title}</li>)}
+                                  </ol>
+                                ) : "-"}
                               </td>
+                              <td className="text-[7.5pt]">
+                                <div>Knowledge = {grandNossRk} Hours</div>
+                                <div>Skills = {grandNossRs} Hours</div>
+                              </td>
+                              <td className="text-[7.5pt]">
+                                <div>Knowledge = {grandAgensiRk} Hours</div>
+                                <div>Skills = {grandAgensiRs} Hours</div>
+                              </td>
+                              <td></td>
                             </tr>
                           </tbody>
                         </table>
 
-                        <div className="font-bold text-[8pt] pt-1">PENGESAHAN PANEL PENILAI PEMETAAN PROGRAM AGENSI (PPPPA)</div>
-                        <table className="jpk-table">
+                        <div className="jpk-sign-box space-y-2.5">
+                          <table className="jpk-table">
+                            <tbody>
+                              <tr>
+                                <td className="font-bold bg-slate-100">ULASAN KESELURUHAN :</td>
+                              </tr>
+                              <tr>
+                                <td className="h-12">{overallRemarks04B}</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2">
+                                  <div className="font-bold mb-1">SYOR PANEL PENILAI PEMETAAN PROGRAM AGENSI (PPPPA):</div>
+                                  <div className="mb-1.5">Dengan ini Panel Penilai Pemetaan Program Agensi</div>
+                                  <div className="flex items-center gap-6 font-bold mb-1.5">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "MEMPERAKU" ? "✓" : ""}</span>
+                                      <span>MEMPERAKU</span>
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "BERSYARAT" ? "✓" : ""}</span>
+                                      <span>MEMPERAKU SECARA BERSYARAT</span>
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="inline-block w-3.5 h-3.5 border border-black text-center leading-3">{panelRecommendation04B === "TIDAK" ? "✓" : ""}</span>
+                                      <span>TIDAK MEMPERAKU</span>
+                                    </span>
+                                  </div>
+                                  <div>
+                                    hasil pemetaan ini bagi program Agensi <strong>{programName || "________________"}</strong> memenuhi NOSS <strong>{skpkCodeStr} - {skpkTitleStr}</strong>
+                                  </div>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+
+                          <div className="font-bold text-[8pt] pt-1">PENGESAHAN PANEL PENILAI PEMETAAN PROGRAM AGENSI (PPPPA)</div>
+                          <table className="jpk-table">
+                            <tbody>
+                              <tr>
+                                <td className="w-1/3 p-2.5">
+                                  <div className="font-bold text-center mb-10">(AHLI 1)</div>
+                                  <div>TANDATANGAN : ________________________</div>
+                                  <div className="mt-1.5">NAMA : {signatories04B.ahli1Name || "_________________________________"}</div>
+                                  <div className="mt-1.5">NO KAD PENGENALAN : {signatories04B.ahli1Ic || "____________________"}</div>
+                                  <div className="mt-1.5">TARIKH : {signatories04B.ahli1Date || "_______________________________"}</div>
+                                </td>
+                                <td className="w-1/3 p-2.5">
+                                  <div className="font-bold text-center mb-10">(AHLI 2)</div>
+                                  <div>TANDATANGAN : ________________________</div>
+                                  <div className="mt-1.5">NAMA : {signatories04B.ahli2Name || "_________________________________"}</div>
+                                  <div className="mt-1.5">NO KAD PENGENALAN : {signatories04B.ahli2Ic || "____________________"}</div>
+                                  <div className="mt-1.5">TARIKH : {signatories04B.ahli2Date || "_______________________________"}</div>
+                                </td>
+                                <td className="w-1/3 p-2.5">
+                                  <div className="font-bold text-center mb-10">(PENGERUSI)</div>
+                                  <div>TANDATANGAN : ________________________</div>
+                                  <div className="mt-1.5">NAMA : {signatories04B.chairName || "_________________________________"}</div>
+                                  <div className="mt-1.5">NO KAD PENGENALAN : {signatories04B.chairIc || "____________________"}</div>
+                                  <div className="mt-1.5">TARIKH : {signatories04B.chairDate || "_______________________________"}</div>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ===========================================================
+                      SET 5 (PILIHAN): RUMUSAN JAWATANKUASA TEKNIKAL PENTAULIAHAN (JKT - COPTPA)
+                  =========================================================== */}
+                  {printFilter === "JKT" && (
+                    <div className="jpk-page-break">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="font-bold text-[8.5pt] uppercase leading-snug max-w-4xl">
+                          RUMUSAN PENILAIAN PEMETAAN PROGRAM KEMAHIRAN BERASASKAN COPTPA BAGI AGENSI{" "}
+                          <span className="underline">{agencyName || "________________________________________"}</span> DENGAN NOSS
+                        </div>
+                        <div className="w-36 flex flex-col items-end shrink-0">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[7.5pt] font-semibold">Muka Surat</span>
+                            <div
+                              className="w-20 h-6 border-[1.5px] border-black relative flex items-center justify-center font-bold text-[7.5pt]"
+                              style={{
+                                background: "linear-gradient(to top left, transparent calc(50% - 0.8px), #000 50%, transparent calc(50% + 0.8px))"
+                              }}
+                            >
+                              <span className="bg-white/90 px-1 font-mono">1 / 1</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <table className="jpk-table mb-3 text-[7pt]">
+                        <thead>
+                          <tr className="bg-slate-100 font-bold text-center">
+                            <th rowSpan="2" className="w-8">BIL</th>
+                            <th rowSpan="2" className="w-32">NAMA PROGRAM AGENSI</th>
+                            <th rowSpan="2" className="w-24">KOD NOSS</th>
+                            <th rowSpan="2" className="w-36">NAMA NOSS</th>
+                            <th rowSpan="2" className="w-10">TAHAP</th>
+                            <th colSpan="3">KANDUNGAN LATIHAN DITERIMA</th>
+                            <th colSpan="3">PATUH JAM LATIHAN (JAM)</th>
+                            <th rowSpan="2" className="w-32">CATATAN PANEL</th>
+                            <th rowSpan="2" className="w-20">SYOR PANEL</th>
+                            <th colSpan="2">JKT KEPUTUSAN</th>
+                            <th rowSpan="2" className="w-24">CATATAN KEPUTUSAN</th>
+                          </tr>
+                          <tr className="bg-slate-50 font-bold text-center text-[6.5pt]">
+                            <th className="w-14">% NOSS DIPENUHI</th>
+                            <th className="w-8">YA</th>
+                            <th className="w-9">TIDAK</th>
+                            <th className="w-12">NOSS</th>
+                            <th className="w-20">AGENSI (PENJAJARAN COPTPA)</th>
+                            <th className="w-16">% JAM LATIHAN MEMENUHI COPTPA</th>
+                            <th className="w-10">LULUS</th>
+                            <th className="w-10">TIDAK</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedPrograms.map((prog, idx) => {
+                            let progNossTotalH = 0;
+                            let progAgensiTotalH = 0;
+                            let sumContentPct = 0;
+                            let countWAs = 0;
+
+                            (prog.cus || []).forEach(cu => {
+                              const cuKey = `${prog.code}-${cu.id}`;
+                              cu.was.forEach(wa => {
+                                progNossTotalH += (Number(wa.rkHours) || 0) + (Number(wa.rsHours) || 0);
+                                const gId = `${cu.id}-${wa.id}`;
+                                const fullWaKey = `${prog.code}-${gId}`;
+                                const hasMatch = modules.some(m => m.subModules.some(sm => (sm.matchedWAs || []).includes(gId) || (sm.matchedWAs || []).includes(fullWaKey)));
+                                const isFul = manualCompliance[fullWaKey] !== undefined ? manualCompliance[fullWaKey] : (manualCompliance[gId] !== undefined ? manualCompliance[gId] : hasMatch);
+                                const rkP = hasMatch ? (waContentCoverage[fullWaKey]?.rkPct ?? (isFul ? 100 : 0)) : 0;
+                                const rsP = hasMatch ? (waContentCoverage[fullWaKey]?.rsPct ?? (isFul ? 100 : 0)) : 0;
+                                sumContentPct += (rkP + rsP) / 2;
+                                countWAs += 1;
+                              });
+                              modules.forEach(m => m.subModules.forEach(sm => {
+                                if ((sm.matchedWAs || []).some(w => w.startsWith(cu.id) || w.startsWith(cuKey))) {
+                                  progAgensiTotalH += (Number(sm.rkHours) || 0) + (Number(sm.rsHours) || 0);
+                                }
+                              }));
+                            });
+
+                            const avgContentPct = countWAs > 0 ? Math.round(sumContentPct / countWAs) : 0;
+                            const hoursPct = progNossTotalH > 0 ? Math.min(100, Math.round((progAgensiTotalH / progNossTotalH) * 100)) : 0;
+                            const isAccepted = avgContentPct >= 80;
+
+                            return (
+                              <tr key={`jkt-${prog.code}`}>
+                                <td className="text-center font-bold">{idx + 1}</td>
+                                <td className="uppercase font-semibold">{programName || "-"}</td>
+                                <td className="font-mono text-center">{prog.code}</td>
+                                <td className="uppercase">{prog.title}</td>
+                                <td className="text-center font-bold">{cleanTahapNumber(prog.tahap)}</td>
+                                <td className="text-center font-bold">{avgContentPct}%</td>
+                                <td className="text-center font-bold">{isAccepted ? "✓" : ""}</td>
+                                <td className="text-center font-bold">{!isAccepted ? "✓" : ""}</td>
+                                <td className="text-center font-mono">{progNossTotalH}</td>
+                                <td className="text-center font-mono">{progAgensiTotalH}</td>
+                                <td className="text-center font-bold">{hoursPct}%</td>
+                                <td>{overallRemarks04B || "Memenuhi keperluan NOSS dan jam latihan COPTPA"}</td>
+                                <td className="text-center font-bold">
+                                  {panelRecommendation04B === "BERSYARAT" ? "SOKONG BERSYARAT" : panelRecommendation04B === "TIDAK" ? "TIDAK SOKONG" : "SOKONG PENUH"}
+                                </td>
+                                <td className="text-center font-bold">{panelRecommendation04B !== "TIDAK" ? "✓" : ""}</td>
+                                <td className="text-center font-bold">{panelRecommendation04B === "TIDAK" ? "✓" : ""}</td>
+                                <td></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+
+                      {/* Perakuan Mesyuarat JKT & 3 Blok Tandatangan */}
+                      <div className="jpk-sign-box space-y-3 text-[8pt]">
+                        <p className="leading-relaxed">
+                          Dengan ini <strong>MESYUARAT JAWATANKUASA TEKNIKAL PENTAULIAHAN {jktMeetingNo || "BIL. ____/2026"}</strong> yang bersidang pada{" "}
+                          <strong>{jktMeetingDate || "______________________"}</strong>{" "}
+                          <span className="font-bold">Memperakukan / Tidak Memperakukan</span> permohonan{" "}
+                          <strong>{agencyName || "________________________________"}</strong> yang telah dibentangkan seperti di atas.
+                        </p>
+                        <p className="italic">
+                          Saya dengan ini mengaku bahawa tidak mempunyai apa-apa kepentingan dalam semua keputusan yang telah dibuat.
+                        </p>
+
+                        <table className="w-full mt-4 text-[8pt]">
                           <tbody>
                             <tr>
-                              <td className="w-1/3 p-2">
-                                <div className="font-bold text-center mb-8">(AHLI 1)</div>
-                                <div>TANDATANGAN : ________________________</div>
-                                <div className="mt-1">NAMA : {signatories04B.ahli1Name || "_________________________________"}</div>
-                                <div className="mt-1">NO KAD PENGENALAN : {signatories04B.ahli1Ic || "____________________"}</div>
-                                <div className="mt-1">TARIKH : {signatories04B.ahli1Date || "_______________________________"}</div>
+                              <td className="w-1/3 pr-4 align-top">
+                                <div className="font-bold mb-10">AHLI</div>
+                                <div>______________________________</div>
+                                <div className="font-bold mt-1">({jktSignatories.ahli1Name || "                                          "})</div>
+                                <div className="mt-1">JAWATAN : {jktSignatories.ahli1Role || "_______________________"}</div>
+                                <div className="mt-1">TARIKH : {jktSignatories.ahli1Date || "_________________________"}</div>
                               </td>
-                              <td className="w-1/3 p-2">
-                                <div className="font-bold text-center mb-8">(AHLI 2)</div>
-                                <div>TANDATANGAN : ________________________</div>
-                                <div className="mt-1">NAMA : {signatories04B.ahli2Name || "_________________________________"}</div>
-                                <div className="mt-1">NO KAD PENGENALAN : {signatories04B.ahli2Ic || "____________________"}</div>
-                                <div className="mt-1">TARIKH : {signatories04B.ahli2Date || "_______________________________"}</div>
+                              <td className="w-1/3 px-2 align-top">
+                                <div className="font-bold mb-10">PENGERUSI</div>
+                                <div>______________________________</div>
+                                <div className="font-bold mt-1">({jktSignatories.chairName || "                                          "})</div>
+                                <div className="mt-1">JAWATAN : {jktSignatories.chairRole || "_______________________"}</div>
+                                <div className="mt-1">TARIKH : {jktSignatories.chairDate || "_________________________"}</div>
                               </td>
-                              <td className="w-1/3 p-2">
-                                <div className="font-bold text-center mb-8">(PENGERUSI)</div>
-                                <div>TANDATANGAN : ________________________</div>
-                                <div className="mt-1">NAMA : {signatories04B.chairName || "_________________________________"}</div>
-                                <div className="mt-1">NO KAD PENGENALAN : {signatories04B.chairIc || "____________________"}</div>
-                                <div className="mt-1">TARIKH : {signatories04B.chairDate || "_______________________________"}</div>
+                              <td className="w-1/3 pl-4 align-top">
+                                <div className="font-bold mb-10">AHLI</div>
+                                <div>______________________________</div>
+                                <div className="font-bold mt-1">({jktSignatories.ahli2Name || "                                          "})</div>
+                                <div className="mt-1">JAWATAN : {jktSignatories.ahli2Role || "_______________________"}</div>
+                                <div className="mt-1">TARIKH : {jktSignatories.ahli2Date || "_________________________"}</div>
                               </td>
                             </tr>
                           </tbody>
